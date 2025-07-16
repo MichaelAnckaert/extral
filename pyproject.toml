@@ -1,0 +1,26 @@
+[project]
+name = "Extral"
+version = "0.1.0"
+description = "Python Powered ETL"
+authors = [
+    {name="Sinax GCV", email="michael@sinax.be"}
+]
+maintainers = [
+    {name="Sinax GCV", email="michael@sinax.be"}
+]
+license = "Apache-2.0"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "mypy>=1.17.0",
+    "pymysql>=1.1.1",
+    "pyyaml>=6.0.2",
+    "ruff>=0.12.3",
+    "sqlalchemy>=2.0.41",
+    "types-psycopg2>=2.9.21.20250516",
+    "types-pymysql>=1.1.0.20250711",
+    "types-pyyaml>=6.0.12.20250516",
+]
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+]

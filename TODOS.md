@@ -1,0 +1,3 @@
+# TODOS
+
+- Make workers configurable

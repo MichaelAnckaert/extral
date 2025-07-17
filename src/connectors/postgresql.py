@@ -51,9 +51,17 @@ class PostgresqlConnector(DatabaseInterface):
         schema: str = self.config.get("schema") or "public"
         self.cursor.execute(
             f"""
-            SELECT column_name, data_type, is_nullable
+            SELECT 
+                column_name,
+                CASE 
+                    WHEN data_type = 'character' AND character_octet_length IS NOT NULL THEN
+                        concat('character(', character_octet_length, ')')
+                    ELSE data_type
+                END AS data_type,
+                is_nullable
             FROM information_schema.columns
             WHERE table_name = %s AND table_schema = %s
+            ORDER BY ordinal_position
             """,
             (table_name, schema),
         )

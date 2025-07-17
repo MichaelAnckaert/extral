@@ -13,6 +13,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "mypy>=1.17.0",
+    "psycopg2>=2.9.10",
     "pymysql>=1.1.1",
     "pyyaml>=6.0.2",
     "ruff>=0.12.3",

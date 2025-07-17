@@ -14,12 +14,12 @@
 import json
 import logging
 from io import StringIO
-from typing import Generator, Optional
+from typing import Any, Generator, Optional
 
 import psycopg2
 from psycopg2 import sql
 
-from connectors import DatabaseInterface, ExtractConfig
+from connectors import DEFAULT_BATCH_SIZE, DatabaseInterface, ExtractConfig
 from database import DatabaseRecord
 import store
 from config import DatabaseConfig, TableConfig
@@ -45,6 +45,33 @@ class PostgresqlConnector(DatabaseInterface):
             self.cursor.close()
         if self.connection:
             self.connection.close()
+
+    def extract_schema_for_table(self, table_name: str) -> tuple[dict[str, Any], ...]:
+        """Extract the schema for a given table in the PostgreSQL database."""
+        schema: str = self.config.get("schema") or "public"
+        self.cursor.execute(
+            f"""
+            SELECT column_name, data_type, is_nullable
+            FROM information_schema.columns
+            WHERE table_name = %s AND table_schema = %s
+            """,
+            (table_name, schema),
+        )
+        columns = self.cursor.fetchall()
+
+        if not columns:
+            raise ValueError(f"Table '{table_name}' does not exist in schema '{schema}'")
+        
+        schema_info = [
+            {
+                "Field": col[0],
+                "Type": col[1],
+                "Null": col[2],
+            }
+            for col in columns
+        ]
+
+        return tuple(schema_info)
 
     def is_table_exists(self, table_name: str) -> bool:
         schema: str = self.config.get("schema") or "public"
@@ -78,7 +105,51 @@ class PostgresqlConnector(DatabaseInterface):
         table_config: TableConfig,
         extract_config: ExtractConfig,
     ) -> Generator[list[DatabaseRecord], None, None]:
-        raise NotImplementedError("This method should be overridden by subclasses")
+        table_name = table_config["name"]
+        schema = self.config.get("schema") or "public"
+        batch_size = table_config.get("batch_size") or DEFAULT_BATCH_SIZE
+
+        logger.debug(
+            f"Extracting data from table: {schema}.{table_name} with batch size: {batch_size} and extract_config: {extract_config}"
+        )
+
+        where_sql = ""
+        if extract_config:
+            if extract_config.get("extract_type") == "INCREMENTAL":
+                incremental_field = extract_config.get("incremental_field")
+                last_value = extract_config.get("last_value")
+                # Modify the SQL query to include the incremental extraction logic
+                where_sql = f"WHERE {incremental_field} > {last_value}"
+
+        with self.connection:
+            with self.connection.cursor() as cursor:
+                base_sql = f"SET search_path TO {schema}; SELECT * FROM {table_name} {where_sql}"
+                if batch_size:
+                    limit_size = (
+                        batch_size + 1
+                    )  # +1 to check if there are more records than batch_size
+                    offset = 0
+                    sql = f"{base_sql} limit {limit_size}"
+                    while True:
+                        logger.debug(f"Running SQL: {sql}")
+                        cursor.execute(sql)
+                        result = cursor.fetchall()
+                        if not result:
+                            break
+                        yield result[:batch_size]  # type: ignore
+                        if len(result) > batch_size:
+                            # If we fetched more than batch_size, we need to continue fetching
+                            offset += batch_size
+                            sql = f"{base_sql} limit {limit_size} offset {offset}"
+                            logger.debug("Fetching next batch of size %d", batch_size)
+                        else:
+                            break
+                else:
+                    sql = f"{base_sql}"
+                    logger.debug(f"Running SQL: {sql}")
+                    cursor.execute(sql)
+                    result = cursor.fetchall()
+                    yield result  # type: ignore
 
     def truncate_table(self, table_name: str) -> None:
         """Truncate a table in the PostgreSQL database."""

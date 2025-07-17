@@ -50,7 +50,7 @@ class PostgresqlConnector(DatabaseInterface):
         """Extract the schema for a given table in the PostgreSQL database."""
         schema: str = self.config.get("schema") or "public"
         self.cursor.execute(
-            f"""
+            """
             SELECT 
                 column_name,
                 CASE 
@@ -68,8 +68,10 @@ class PostgresqlConnector(DatabaseInterface):
         columns = self.cursor.fetchall()
 
         if not columns:
-            raise ValueError(f"Table '{table_name}' does not exist in schema '{schema}'")
-        
+            raise ValueError(
+                f"Table '{table_name}' does not exist in schema '{schema}'"
+            )
+
         schema_info = [
             {
                 "Field": col[0],
@@ -108,6 +110,32 @@ class PostgresqlConnector(DatabaseInterface):
         self.cursor.execute(create_table_query)
         self.connection.commit()
 
+    def _tuple_to_dict_results(
+        self, cursor: psycopg2.extensions.cursor, results: Optional[list[tuple[Any]]]
+    ) -> Optional[list[dict[str, Any]]]:
+        """
+        Convert tuple-based query results to dictionary format.
+
+        Args:
+            results: List of tuples or single tuple from fetchone/fetchall/fetchmany
+
+        Returns:
+            List of dicts or single dict with column names as keys
+        """
+        if results is None:
+            return None
+
+        # Get column names from cursor description
+        if cursor.description is None:
+            raise ValueError(
+                "Cursor description is None, cannot convert results to dict"
+            )
+
+        columns: list[str] = [desc[0] for desc in cursor.description]
+
+        # Handle multiple rows (from fetchall/fetchmany)
+        return [dict(zip(columns, row)) for row in results]
+
     def extract_data(
         self,
         table_config: TableConfig,
@@ -144,7 +172,7 @@ class PostgresqlConnector(DatabaseInterface):
                         result = cursor.fetchall()
                         if not result:
                             break
-                        yield result[:batch_size]  # type: ignore
+                        yield self._tuple_to_dict_results(cursor, result[:batch_size])  # type: ignore
                         if len(result) > batch_size:
                             # If we fetched more than batch_size, we need to continue fetching
                             offset += batch_size
@@ -156,8 +184,8 @@ class PostgresqlConnector(DatabaseInterface):
                     sql = f"{base_sql}"
                     logger.debug(f"Running SQL: {sql}")
                     cursor.execute(sql)
-                    result = cursor.fetchall()
-                    yield result  # type: ignore
+                    results = cursor.fetchall()
+                    yield self._tuple_to_dict_results(cursor, results)  # type: ignore
 
     def truncate_table(self, table_name: str) -> None:
         """Truncate a table in the PostgreSQL database."""
@@ -178,7 +206,6 @@ class PostgresqlConnector(DatabaseInterface):
         batch_size = table_config.get("batch_size")
         table_name = table_config["name"]
         merge_key = table_config.get("merge_key")
-
         if batch_size:
             batches = [
                 data[i : i + batch_size] for i in range(0, len(data), batch_size)

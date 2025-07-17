@@ -15,7 +15,7 @@ import logging
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from extral import config
+from extral import config, __version__
 from extral.extract import extract_table
 from extral.load import load_data
 from extral.state import state
@@ -69,13 +69,22 @@ def _setup_logging(args: argparse.Namespace):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run the ETL process.")
+    parser = argparse.ArgumentParser(description=f"Extract and Load Data Tool (v{__version__})")
     parser.add_argument(
+        "-c",
         "--config",
         type=str,
         default="config.yaml",
-        help="Path to the configuration file.",
+        help="Path to the configuration file. Defaults to 'config.yaml'.",
     )
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+        help="Show the version of the tool.",
+    )
+    
     args = parser.parse_args()
 
     _setup_logging(args)

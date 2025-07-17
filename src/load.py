@@ -77,6 +77,10 @@ def load_data(
         strategy = table_config.get("strategy") or DEFAULT_STRATEGY
         if strategy == "replace":
             connector.truncate_table(table_name)
+            connector.load_table(
+                table_config,
+                file_path=file_path,
+            )
         elif strategy == "merge":
             merge_key = table_config.get("merge_key")
             if not merge_key:

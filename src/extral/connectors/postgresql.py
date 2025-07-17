@@ -19,11 +19,11 @@ from typing import Any, Generator, Optional
 import psycopg2
 from psycopg2 import sql
 
-from connectors import DEFAULT_BATCH_SIZE, DatabaseInterface, ExtractConfig
-from database import DatabaseRecord
-import store
-from config import DatabaseConfig, TableConfig
-from schema import TargetDatabaseSchema
+from extral.connectors import DEFAULT_BATCH_SIZE, DatabaseInterface, ExtractConfig
+from extral.database import DatabaseRecord
+from extral import store
+from extral.config import DatabaseConfig, TableConfig
+from extral.schema import TargetDatabaseSchema
 
 logger = logging.getLogger(__name__)
 

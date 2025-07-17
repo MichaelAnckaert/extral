@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from typing import Any, Generator, Optional
-from config import DatabaseConfig, TableConfig
-from database import DatabaseRecord
-from schema import TargetDatabaseSchema
+from extral.config import DatabaseConfig, TableConfig
+from extral.database import DatabaseRecord
+from extral.schema import TargetDatabaseSchema
 
 ExtractConfig = dict[str, Optional[str | int | None]]
 

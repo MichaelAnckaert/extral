@@ -14,10 +14,10 @@
 import json
 import logging
 
-from config import DatabaseConfig, TableConfig
-from connectors import postgresql
-from database import DatabaseTypeTranslator
-from schema import DatabaseSchema, TargetDatabaseSchema
+from extral.config import DatabaseConfig, TableConfig
+from extral.connectors import postgresql
+from extral.database import DatabaseTypeTranslator
+from extral.schema import DatabaseSchema, TargetDatabaseSchema
 
 logger = logging.getLogger(__name__)
 

@@ -16,7 +16,7 @@ import json
 import logging
 from typing import TypedDict
 
-from encoder import CustomEncoder
+from extral.encoder import CustomEncoder
 
 logger = logging.getLogger(__name__)
 

@@ -15,17 +15,17 @@ import json
 import logging
 from typing import Generator, Optional, Tuple
 
-import encoder
-from config import DatabaseConfig, IncrementalConfig, TableConfig
-from connectors import DatabaseInterface, mysql, postgresql
-from database import DatabaseRecord
-from schema import (
+from extral import encoder
+from extral.config import DatabaseConfig, IncrementalConfig, TableConfig
+from extral.connectors import DatabaseInterface, mysql, postgresql
+from extral.database import DatabaseRecord
+from extral.schema import (
     SchemaCreateException,
     TargetDatabaseSchema,
     infer_schema,
 )
-from state import state
-from store import compress_data, store_data
+from extral.state import state
+from extral.store import compress_data, store_data
 
 logger = logging.getLogger(__name__)
 

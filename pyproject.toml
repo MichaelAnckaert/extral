@@ -22,6 +22,9 @@ dependencies = [
     "types-pymysql>=1.1.0.20250711",
     "types-pyyaml>=6.0.12.20250516",
 ]
-classifiers = [
-    "License :: OSI Approved :: Apache Software License",
-]
+[project.scripts]
+extral = "extral.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

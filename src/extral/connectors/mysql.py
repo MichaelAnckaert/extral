@@ -16,10 +16,10 @@ from typing import Any, Generator
 
 import pymysql.cursors
 
-from config import DatabaseConfig, TableConfig
-from database import DatabaseRecord
-from connectors import DatabaseInterface, ExtractConfig, DEFAULT_BATCH_SIZE
-from schema import TargetDatabaseSchema
+from extral.config import DatabaseConfig, TableConfig
+from extral.database import DatabaseRecord
+from extral.connectors import DatabaseInterface, ExtractConfig, DEFAULT_BATCH_SIZE
+from extral.schema import TargetDatabaseSchema
 
 logger = logging.getLogger(__name__)
 

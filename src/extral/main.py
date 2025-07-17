@@ -15,10 +15,10 @@ import logging
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import config
-from extract import extract_table
-from load import load_data
-from state import state
+from extral import config
+from extral.extract import extract_table
+from extral.load import load_data
+from extral.state import state
 
 import argparse
 

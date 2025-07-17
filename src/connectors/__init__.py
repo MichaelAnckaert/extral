@@ -24,29 +24,45 @@ DEFAULT_BATCH_SIZE = 50000
 
 class DatabaseInterface:
     def connect(self, config: DatabaseConfig) -> None:
-        raise NotImplementedError("The method 'connect' should be overridden by subclasses")
+        raise NotImplementedError(
+            "The method 'connect' should be overridden by subclasses"
+        )
 
     def disconnect(self) -> None:
-        raise NotImplementedError("The method 'disconnect' should be overridden by subclasses")
+        raise NotImplementedError(
+            "The method 'disconnect' should be overridden by subclasses"
+        )
 
     def extract_schema_for_table(self, table_name: str) -> tuple[dict[str, Any], ...]:
-        raise NotImplementedError("The method 'extract_schema_for_table' should be overridden by subclasses")
+        raise NotImplementedError(
+            "The method 'extract_schema_for_table' should be overridden by subclasses"
+        )
 
     def is_table_exists(self, table_name: str) -> bool:
-        raise NotImplementedError("The method 'is_table_exists' should be overridden by subclasses")
+        raise NotImplementedError(
+            "The method 'is_table_exists' should be overridden by subclasses"
+        )
 
     def create_table(self, table_name: str, dbschema: TargetDatabaseSchema) -> None:
-        raise NotImplementedError("The method 'create_table' should be overridden by subclasses")
+        raise NotImplementedError(
+            "The method 'create_table' should be overridden by subclasses"
+        )
 
     def extract_data(
         self,
         table_config: TableConfig,
         extract_config: ExtractConfig,
     ) -> Generator[list[DatabaseRecord], None, None]:
-        raise NotImplementedError("The method 'extract_data' should be overridden by subclasses")
+        raise NotImplementedError(
+            "The method 'extract_data' should be overridden by subclasses"
+        )
 
     def truncate_table(self, table_name: str) -> None:
-        raise NotImplementedError("The method 'truncate_table' should be overridden by subclasses")
+        raise NotImplementedError(
+            "The method 'truncate_table' should be overridden by subclasses"
+        )
 
     def load_table(self, table_config: TableConfig, file_path: str) -> None:
-        raise NotImplementedError("The method 'load_table' should be overridden by subclasses")
+        raise NotImplementedError(
+            "The method 'load_table' should be overridden by subclasses"
+        )

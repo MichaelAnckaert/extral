@@ -26,6 +26,13 @@ LoggingConfig = TypedDict(
     },
 )
 
+ProcessingConfig = TypedDict(
+    "ProcessingConfig",
+    {
+        "workers": int,
+    },
+)
+
 DatabaseConfig = TypedDict(
     "DatabaseConfig",
     {
@@ -79,6 +86,7 @@ Config = TypedDict(
     "Config",
     {
         "logging": list[LoggingConfig],
+        "processing": list[ProcessingConfig],
         "source": list[DatabaseConfig],
         "destination": list[DatabaseConfig],
         "tables": list[TableConfig],
@@ -135,3 +143,12 @@ def get_destination_config(path: str) -> DatabaseConfig:
         logger.error("Destination configuration not found in config.yaml")
         sys.exit(1)
     return db_config[0]  # Return the first destination configuration
+
+
+def get_processing_config(path: str) -> ProcessingConfig:
+    """Get processing configuration from the config."""
+    config = read_config(path)
+    processing_config = config.get("processing")
+    if not processing_config:
+        raise KeyError("Processing configuration not found in config file")
+    return processing_config[0]

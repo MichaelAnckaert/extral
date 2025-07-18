@@ -26,6 +26,9 @@ Specify the configuration file with `--config <file.yaml>` when running the appl
 logging:
 - level: info
 
+processing:
+- workers: 4  # Number of parallel table processing workers (default: 4)
+
 source:
  - type: mysql
    host: localhost
@@ -58,6 +61,16 @@ destination:
     database: example_db
     schema: public
 ```
+
+## Processing Configuration
+Extral supports parallel processing of multiple tables to improve performance. You can configure the number of worker threads used for parallel table processing.
+
+```yaml
+processing:
+  - workers: 8  # Number of parallel table processing workers (default: 4)
+```
+
+The `workers` parameter controls how many tables can be processed simultaneously. The default value is 4 if not specified. Adjust this value based on your system resources and database capacity.
 
 ## Incremental data loading
 Extral supports incremental data loading, which uses a *cursor* to track the data that has already been extracted. 

@@ -24,6 +24,8 @@ import argparse
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_WORKER_COUNT = 4
+
 
 def process_table(
     source_config: config.DatabaseConfig,
@@ -100,12 +102,18 @@ def run(config_file_path: str):
     source_config = config.get_source_config(config_file_path)
     destination_config = config.get_destination_config(config_file_path)
     tables_config = config.get_tables_config(config_file_path)
+    
+    try:
+        processing_config = config.get_processing_config(config_file_path)
+        worker_count = processing_config['workers']
+    except KeyError:
+        worker_count = DEFAULT_WORKER_COUNT
 
     if not tables_config:
         logger.error("No tables specified in the configuration.")
         sys.exit(1)
 
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
         futures = {
             executor.submit(
                 process_table, source_config, destination_config, table

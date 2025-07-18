@@ -14,7 +14,7 @@
 import json
 import logging
 
-from extral.config import TableConfig, LoadConfig, LoadStrategy, ReplaceMethod, ConnectorConfig
+from extral.config import TableConfig, FileItemConfig, LoadConfig, LoadStrategy, ReplaceMethod, ConnectorConfig
 from extral.connectors import PostgreSQLConnector, MySQLConnector
 from extral.connectors.file import CSVConnector, JSONConnector
 from extral.database import DatabaseTypeTranslator
@@ -55,19 +55,19 @@ def _create_target_database_schema(
 
 def load_data(
     destination_config: ConnectorConfig,
-    table_config: TableConfig,
+    dataset_config: TableConfig | FileItemConfig,
     file_path: str,
     schema_path: str,
 ):
-    table_name = table_config.name
+    dataset_name = dataset_config.name
 
     if hasattr(destination_config, 'database'):
         logger.info(
-            f"Loading data for table '{table_name}' from file '{file_path}' to destination '{destination_config.database}'"
+            f"Loading data for dataset '{dataset_name}' from file '{file_path}' to destination '{destination_config.database}'"
         )
     else:
         logger.info(
-            f"Loading data for table '{table_name}' from file '{file_path}' to destination file"
+            f"Loading data for dataset '{dataset_name}' from file '{file_path}' to destination file"
         )
 
     with open(schema_path, "r") as schema_file:
@@ -99,25 +99,25 @@ def load_data(
         raise ValueError(f"Unsupported destination type: {destination_type}")
     
     try:
-        # Create LoadConfig from table_config
+        # Create LoadConfig from dataset_config
         load_config = LoadConfig(
-            strategy=table_config.strategy,
-            replace_method=table_config.replace.how if table_config.replace else ReplaceMethod.RECREATE,
-            merge_key=table_config.merge_key,
-            batch_size=table_config.batch_size
+            strategy=dataset_config.strategy,
+            replace_method=dataset_config.replace.how if hasattr(dataset_config, 'replace') and dataset_config.replace else ReplaceMethod.RECREATE,
+            merge_key=getattr(dataset_config, 'merge_key', None),
+            batch_size=getattr(dataset_config, 'batch_size', None)
         )
         
         # Handle table creation/truncation for replace strategy (only for database connectors)
         if destination_type in ["mysql", "postgresql"] and load_config.strategy == LoadStrategy.REPLACE:
             if load_config.replace_method == ReplaceMethod.RECREATE:
                 # Recreate the table, dropping it first
-                connector.create_table(table_name, target_schema)
+                connector.create_table(dataset_name, target_schema)
             elif load_config.replace_method == ReplaceMethod.TRUNCATE:
                 # Only truncate the table, keeping the structure
-                connector.truncate_table(table_name)
+                connector.truncate_table(dataset_name)
             else:
                 logger.error(
-                    f"Unsupported replace method '{load_config.replace_method.value}' for table '{table_name}'"
+                    f"Unsupported replace method '{load_config.replace_method.value}' for dataset '{dataset_name}'"
                 )
                 raise ValueError(f"Unsupported replace method: {load_config.replace_method.value}")
         
@@ -129,7 +129,7 @@ def load_data(
             data = json.loads(data_str)
         
         # Use the new load_data method
-        connector.load_data(table_name, data, load_config)
+        connector.load_data(dataset_name, data, load_config)
         
     finally:
         # Only disconnect database connectors

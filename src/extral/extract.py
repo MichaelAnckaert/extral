@@ -16,7 +16,7 @@ import logging
 from typing import Generator, Optional, Tuple
 
 from extral import encoder
-from extral.config import ExtractConfig, IncrementalConfig, TableConfig, ConnectorConfig
+from extral.config import ExtractConfig, TableConfig, FileItemConfig, ConnectorConfig
 from extral.connectors import MySQLConnector, PostgreSQLConnector
 from extral.connectors.file import CSVConnector, JSONConnector
 from extral.database import DatabaseRecord
@@ -25,7 +25,7 @@ from extral.schema import (
     TargetDatabaseSchema,
     infer_schema,
 )
-from extral.state import state
+from extral.state import state, DatasetState
 from extral.store import compress_data, store_data
 
 logger = logging.getLogger(__name__)
@@ -93,78 +93,20 @@ def extract_schema_from_source(
 
 def _extract_data(
     source_config: ConnectorConfig,
-    table_config: TableConfig,
-    incremental: Optional[IncrementalConfig],
+    dataset_config: TableConfig | FileItemConfig,
+    extract_config: ExtractConfig,
 ) -> Generator[list[DatabaseRecord], None, None]:
     source_type = source_config.type
-    table_name = table_config.name
-
-    extract_config = ExtractConfig(
-        extract_type="FULL",
-        batch_size=table_config.batch_size
-    )
-    
-    if incremental:
-        logger.debug(
-            f"Incremental extraction configured for table '{table_name}' with field '{incremental.field}'"
-        )
-        incremental_field = incremental.field
-        incremental_type = incremental.type
-        initial_value: str | int | None = incremental.initial_value
-
-        if initial_value is None:
-            if incremental_type in ["int", "float"]:
-                initial_value = 0
-            elif incremental_type == "datetime":
-                initial_value = "1970-01-01 00:00:00"
-            elif incremental_type == "date":
-                initial_value = "1970-01-01"
-            else:
-                logger.error(f"Unsupported incremental type: {incremental_type}")
-                initial_value = "''"
-
-        if table_name in state.tables:
-            state_incremental = state.tables[table_name].get("incremental", {})
-            if state_incremental:
-                if state_incremental.get("field") != incremental_field:
-                    logger.warning(
-                        f"Incremental field mismatch for table '{table_name}': expected '{incremental_field}', found '{state_incremental.get('field')}'. Will proceed with full extraction."
-                    )
-                else:
-                    last_value = state_incremental.get("last_value", initial_value)
-                    if incremental_type not in ["int"]:
-                        extract_config.last_value = f"'{last_value}'"
-                    else:
-                        extract_config.last_value = last_value
-                    extract_config.extract_type = "INCREMENTAL"
-                    extract_config.incremental_field = incremental_field
-            else:
-                # No previous state, use initial value
-                last_value = initial_value
-                if incremental_type not in ["int"]:
-                    extract_config.last_value = f"'{last_value}'"
-                else:
-                    extract_config.last_value = last_value
-                extract_config.extract_type = "INCREMENTAL"
-                extract_config.incremental_field = incremental_field
-        else:
-            # No previous state, use initial value
-            last_value = initial_value
-            if incremental_type not in ["int"]:
-                extract_config.last_value = f"'{last_value}'"
-            else:
-                extract_config.last_value = last_value
-            extract_config.extract_type = "INCREMENTAL"
-            extract_config.incremental_field = incremental_field
+    dataset_name = dataset_config.name
 
     if source_type == "mysql":
         connector = MySQLConnector()
         connector.connect(source_config)
-        return connector.extract_data(table_name, extract_config)
+        return connector.extract_data(dataset_name, extract_config)
     elif source_type == "postgresql":
         connector = PostgreSQLConnector()
         connector.connect(source_config)
-        return connector.extract_data(table_name, extract_config)
+        return connector.extract_data(dataset_name, extract_config)
     elif source_type == "file":
         # For file connectors
         file_config = source_config  # type: ignore
@@ -175,7 +117,7 @@ def _extract_data(
         else:
             raise ValueError(f"Unsupported file format: {file_config.format}")
         
-        return connector.extract_data(table_name, extract_config)
+        return connector.extract_data(dataset_name, extract_config)
     else:
         logger.error(f"Unsupported source type: {source_type}")
         raise ValueError(f"Unsupported source type: {source_type}")
@@ -210,28 +152,95 @@ def _infer_schema_from_data(
 
 
 def extract_table(
-    source_config: ConnectorConfig, table_config: TableConfig
+    source_config: ConnectorConfig, dataset_config: TableConfig | FileItemConfig, pipeline_name: str
 ) -> Tuple[Optional[str], Optional[str]]:
-    table_name = table_config.name
-    incremental = table_config.incremental
+    dataset_name = dataset_config.name
+    incremental = getattr(dataset_config, 'incremental', None)
+    
+    # Use dataset_id to identify the table (for now, just use dataset_name)
+    dataset_id = dataset_name
 
     try:
-        logger.info("Starting extraction from table: %s", table_name)
-        datagen = _extract_data(source_config, table_config, incremental)
+        logger.info("Starting extraction from dataset: %s", dataset_name)
+        
+        # Set up extraction config
+        extract_config = ExtractConfig(
+            extract_type="FULL",
+            batch_size=getattr(dataset_config, 'batch_size', None)
+        )
+        
+        # Handle incremental extraction with state management
+        if incremental:
+            logger.debug(
+                f"Incremental extraction configured for dataset '{dataset_name}' with field '{incremental.field}'"
+            )
+            incremental_field = incremental.field
+            incremental_type = incremental.type
+            initial_value: str | int | None = incremental.initial_value
+
+            if initial_value is None:
+                if incremental_type in ["int", "float"]:
+                    initial_value = 0
+                elif incremental_type == "datetime":
+                    initial_value = "1970-01-01 00:00:00"
+                elif incremental_type == "date":
+                    initial_value = "1970-01-01"
+                else:
+                    logger.error(f"Unsupported incremental type: {incremental_type}")
+                    initial_value = "''"
+
+            # Check existing state for this dataset in this pipeline
+            existing_state = state.get_dataset_state(pipeline_name, dataset_id)
+            
+            if existing_state:
+                state_incremental = existing_state.get("incremental", {})
+                if state_incremental:
+                    if state_incremental.get("field") != incremental_field:
+                        logger.warning(
+                            f"Incremental field mismatch for dataset '{dataset_name}': expected '{incremental_field}', found '{state_incremental.get('field')}'. Will proceed with full extraction."
+                        )
+                    else:
+                        last_value = state_incremental.get("last_value", initial_value)
+                        if incremental_type not in ["int"]:
+                            extract_config.last_value = f"'{last_value}'"
+                        else:
+                            extract_config.last_value = last_value
+                        extract_config.extract_type = "INCREMENTAL"
+                        extract_config.incremental_field = incremental_field
+                else:
+                    # No previous state, use initial value
+                    last_value = initial_value
+                    if incremental_type not in ["int"]:
+                        extract_config.last_value = f"'{last_value}'"
+                    else:
+                        extract_config.last_value = last_value
+                    extract_config.extract_type = "INCREMENTAL"
+                    extract_config.incremental_field = incremental_field
+            else:
+                # No previous state, use initial value
+                last_value = initial_value
+                if incremental_type not in ["int"]:
+                    extract_config.last_value = f"'{last_value}'"
+                else:
+                    extract_config.last_value = last_value
+                extract_config.extract_type = "INCREMENTAL"
+                extract_config.incremental_field = incremental_field
+        
+        datagen = _extract_data(source_config, dataset_config, extract_config)
 
         full_data: list[DatabaseRecord] = []
         for data in datagen:
             if not data:
-                logger.info("No data extracted from table '%s'", table_name)
+                logger.info("No data extracted from dataset '%s'", dataset_name)
                 continue
 
             logger.debug(
-                f"Batch: Extracted {len(data):,} records from table '{table_name}'"
+                f"Batch: Extracted {len(data):,} records from dataset '{dataset_name}'"
             )
             full_data.extend(data)
 
         logger.info(
-            f"Total records extracted from table '{table_name}': {len(full_data):,}"
+            f"Total records extracted from dataset '{dataset_name}': {len(full_data):,}"
         )
 
         if len(full_data) == 0:
@@ -243,36 +252,37 @@ def extract_table(
             incremental_field = incremental.field
             last_value = full_data[-1][incremental_field] if full_data else None
 
-            state.tables[table_name] = {
+            dataset_state: DatasetState = {
                 "incremental": {
                     "field": incremental_field,
                     "last_value": last_value,
                 }
             }
+            state.set_dataset_state(pipeline_name, dataset_id, dataset_state)
             logger.debug(
-                f"Updated state for incremental extraction: {state.tables[table_name]}"
+                f"Updated state for incremental extraction: {dataset_state}"
             )
 
-        schema = extract_schema_from_source(source_config, table_name)
+        schema = extract_schema_from_source(source_config, dataset_name)
         if not schema:
             logger.error(
-                f"No schema could be extracted for table '{table_name}' from source '{source_config['type']}'. Inferring schema from data."
+                f"No schema could be extracted for dataset '{dataset_name}' from source '{source_config.type}'. Inferring schema from data."
             )
             schema = _infer_schema_from_data(full_data)
 
-        schema_path = f"output/schema_{table_name}.json"
+        schema_path = f"output/schema_{dataset_name}.json"
         logger.info(f"Storing schema to file: {schema_path}")
         with open(schema_path, "w") as file:
             json.dump(schema, file)
 
-        file_path = f"output/compressed_{table_name}.jsonl.gz"
-        logger.info(f"Storing data for table '{table_name}' in file: {file_path}")
+        file_path = f"output/compressed_{dataset_name}.jsonl.gz"
+        logger.info(f"Storing data for dataset '{dataset_name}' in file: {file_path}")
         data_bytes = encoder.encode_data(full_data)
         compressed_data = compress_data(data_bytes)
         store_data(compressed_data, file_path)
 
-        logger.info(f"Extraction finished for table '{table_name}'")
+        logger.info(f"Extraction finished for dataset '{dataset_name}'")
         return file_path, schema_path
     except Exception as e:
-        logger.error("Error processing table '%s': %s", table_name, e)
+        logger.error("Error processing dataset '%s': %s", dataset_name, e)
         raise e

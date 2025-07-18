@@ -16,8 +16,8 @@ import logging
 from typing import Generator, Optional, Tuple
 
 from extral import encoder
-from extral.config import DatabaseConfig, IncrementalConfig, TableConfig
-from extral.connectors import DatabaseInterface, mysql, postgresql
+from extral.config import DatabaseConfig, ExtractConfig, IncrementalConfig, TableConfig
+from extral.connectors import MySQLConnector, PostgreSQLConnector
 from extral.database import DatabaseRecord
 from extral.schema import (
     SchemaCreateException,
@@ -34,20 +34,22 @@ def extract_schema_from_source(
     source_config: DatabaseConfig, table_name: str
 ) -> Optional[TargetDatabaseSchema]:
     """Determine the schema for a given table."""
-    source_type = source_config.get("type")
+    source_type = source_config.type
 
     if source_type == "mysql":
-        mysql_connector = mysql.MySQLConnector()
+        mysql_connector = MySQLConnector()
         mysql_connector.connect(source_config)
         schema = mysql_connector.extract_schema_for_table(table_name)
+        mysql_connector.disconnect()
         if not schema:
             raise SchemaCreateException(
                 f"Could not extract schema for table '{table_name}' from MySQL source"
             )
     elif source_type == "postgresql":
-        postgresql_connector = postgresql.PostgresqlConnector()
+        postgresql_connector = PostgreSQLConnector()
         postgresql_connector.connect(source_config)
         schema = postgresql_connector.extract_schema_for_table(table_name)
+        postgresql_connector.disconnect()
         if not schema:
             raise SchemaCreateException(
                 f"Could not extract schema for table '{table_name}' from PostgreSQL source"
@@ -74,21 +76,21 @@ def _extract_data(
     table_config: TableConfig,
     incremental: Optional[IncrementalConfig],
 ) -> Generator[list[DatabaseRecord], None, None]:
-    source_type = source_config.get("type")
-    table_name = table_config["name"]
+    source_type = source_config.type
+    table_name = table_config.name
 
-    extract_config: dict[str, Optional[str | int]] = {
-        "extract_type": "FULL",
-        "last_value": None,
-        "incremental_field": None,
-    }
+    extract_config = ExtractConfig(
+        extract_type="FULL",
+        batch_size=table_config.batch_size
+    )
+    
     if incremental:
         logger.debug(
-            f"Incremental extraction configured for table '{table_name}' with field '{incremental.get('field')}'"
+            f"Incremental extraction configured for table '{table_name}' with field '{incremental.field}'"
         )
-        incremental_field = incremental.get("field")
-        incremental_type = incremental.get("type")
-        initial_value: str | int | None = incremental.get("initial_value", None)
+        incremental_field = incremental.field
+        incremental_type = incremental.type
+        initial_value: str | int | None = incremental.initial_value
 
         if initial_value is None:
             if incremental_type in ["int", "float"]:
@@ -110,46 +112,39 @@ def _extract_data(
                     )
                 else:
                     last_value = state_incremental.get("last_value", initial_value)
-                    if incremental_type not in [
-                        "int",
-                    ]:
-                        extract_config["last_value"] = f"'{last_value}'"
+                    if incremental_type not in ["int"]:
+                        extract_config.last_value = f"'{last_value}'"
                     else:
-                        extract_config["last_value"] = last_value
-                    extract_config["extract_type"] = "INCREMENTAL"
-                    extract_config["incremental_field"] = incremental_field
+                        extract_config.last_value = last_value
+                    extract_config.extract_type = "INCREMENTAL"
+                    extract_config.incremental_field = incremental_field
             else:
                 # No previous state, use initial value
                 last_value = initial_value
-                if incremental_type not in [
-                    "int",
-                ]:
-                    extract_config["last_value"] = f"'{last_value}'"
+                if incremental_type not in ["int"]:
+                    extract_config.last_value = f"'{last_value}'"
                 else:
-                    extract_config["last_value"] = last_value
-                extract_config["extract_type"] = "INCREMENTAL"
-                extract_config["incremental_field"] = incremental_field
+                    extract_config.last_value = last_value
+                extract_config.extract_type = "INCREMENTAL"
+                extract_config.incremental_field = incremental_field
         else:
             # No previous state, use initial value
             last_value = initial_value
-            if incremental_type not in [
-                "int",
-            ]:
-                extract_config["last_value"] = f"'{last_value}'"
+            if incremental_type not in ["int"]:
+                extract_config.last_value = f"'{last_value}'"
             else:
-                extract_config["last_value"] = last_value
-            extract_config["extract_type"] = "INCREMENTAL"
-            extract_config["incremental_field"] = incremental_field
+                extract_config.last_value = last_value
+            extract_config.extract_type = "INCREMENTAL"
+            extract_config.incremental_field = incremental_field
 
-    connector: DatabaseInterface
     if source_type == "mysql":
-        connector = mysql.MySQLConnector()
+        connector = MySQLConnector()
         connector.connect(source_config)
-        return connector.extract_data(table_config, extract_config)
+        return connector.extract_data(table_name, extract_config)
     elif source_type == "postgresql":
-        connector = postgresql.PostgresqlConnector()
+        connector = PostgreSQLConnector()
         connector.connect(source_config)
-        return connector.extract_data(table_config, extract_config)
+        return connector.extract_data(table_name, extract_config)
     else:
         logger.error(f"Unsupported source type: {source_type}")
         raise ValueError(f"Unsupported source type: {source_type}")
@@ -186,8 +181,8 @@ def _infer_schema_from_data(
 def extract_table(
     source_config: DatabaseConfig, table_config: TableConfig
 ) -> Tuple[Optional[str], Optional[str]]:
-    table_name = table_config["name"]
-    incremental = table_config.get("incremental")
+    table_name = table_config.name
+    incremental = table_config.incremental
 
     try:
         logger.info("Starting extraction from table: %s", table_name)
@@ -214,7 +209,7 @@ def extract_table(
 
         # Handle incremental config
         if incremental:
-            incremental_field = incremental["field"]
+            incremental_field = incremental.field
             last_value = full_data[-1][incremental_field] if full_data else None
 
             state.tables[table_name] = {

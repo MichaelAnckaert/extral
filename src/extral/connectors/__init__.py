@@ -16,12 +16,15 @@ from extral.config import DatabaseConfig, TableConfig
 from extral.database import DatabaseRecord
 from extral.schema import TargetDatabaseSchema
 
+# Legacy types for backward compatibility
 ExtractConfig = dict[str, Optional[str | int | None]]
-
-
 DEFAULT_BATCH_SIZE = 50000
 
+# Import new connector interfaces
+from .connector import Connector
+from .database import DatabaseConnector, PostgreSQLConnector, MySQLConnector
 
+# Legacy DatabaseInterface for backward compatibility
 class DatabaseInterface:
     def connect(self, config: DatabaseConfig) -> None:
         raise NotImplementedError(
@@ -66,3 +69,17 @@ class DatabaseInterface:
         raise NotImplementedError(
             "The method 'load_table' should be overridden by subclasses"
         )
+
+
+# Export both old and new interfaces
+__all__ = [
+    # Legacy
+    "DatabaseInterface", 
+    "ExtractConfig", 
+    "DEFAULT_BATCH_SIZE",
+    # New interfaces
+    "Connector",
+    "DatabaseConnector", 
+    "PostgreSQLConnector", 
+    "MySQLConnector"
+]

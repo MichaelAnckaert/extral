@@ -15,7 +15,8 @@ import logging
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from extral import config, __version__
+from extral import __version__
+from extral.config import Config, DatabaseConfig, TableConfig
 from extral.extract import extract_table
 from extral.load import load_data
 from extral.state import state
@@ -28,38 +29,40 @@ DEFAULT_WORKER_COUNT = 4
 
 
 def process_table(
-    source_config: config.DatabaseConfig,
-    destination_config: config.DatabaseConfig,
-    table_config: config.TableConfig,
+    source_config: DatabaseConfig,
+    destination_config: DatabaseConfig,
+    table_config: TableConfig,
 ):
     try:
-        logger.info(f"Processing table: {table_config['name']}")
+        logger.info(f"Processing table: {table_config.name}")
         file_path, schema_path = extract_table(source_config, table_config)
         if file_path is None or schema_path is None:
             logger.info(
-                f"Skipping table load for '{table_config['name']}' as there is no data extracted."
+                f"Skipping table load for '{table_config.name}' as there is no data extracted."
             )
             return
         load_data(destination_config, table_config, file_path, schema_path)
     except Exception as e:
-        logger.error(f"Error processing table '{table_config['name']}': {e}")
+        logger.error(f"Error processing table '{table_config.name}': {e}")
 
 
 def _setup_logging(args: argparse.Namespace):
-    logging_config = config.get_logging_config(args.config)
-    if logging_config["level"] == "debug":
+    config = Config.read_config(args.config)
+    logging_config = config.logging
+    
+    if logging_config.level == "debug":
         level = logging.DEBUG
-    elif logging_config["level"] == "info":
+    elif logging_config.level == "info":
         level = logging.INFO
-    elif logging_config["level"] == "warning":
+    elif logging_config.level == "warning":
         level = logging.WARNING
-    elif logging_config["level"] == "error":
+    elif logging_config.level == "error":
         level = logging.ERROR
-    elif logging_config["level"] == "critical":
+    elif logging_config.level == "critical":
         level = logging.CRITICAL
     else:
         logger.warning(
-            f"Unknown logging level '{logging_config['level']}', defaulting to INFO."
+            f"Unknown logging level '{logging_config.level}', defaulting to INFO."
         )
         level = logging.INFO
 
@@ -99,15 +102,13 @@ def main():
 
 def run(config_file_path: str):
     state.load_state()
-    source_config = config.get_source_config(config_file_path)
-    destination_config = config.get_destination_config(config_file_path)
-    tables_config = config.get_tables_config(config_file_path)
+    config = Config.read_config(config_file_path)
     
-    try:
-        processing_config = config.get_processing_config(config_file_path)
-        worker_count = processing_config['workers']
-    except KeyError:
-        worker_count = DEFAULT_WORKER_COUNT
+    source_config = config.source
+    destination_config = config.destination
+    tables_config = config.tables
+    
+    worker_count = config.processing.workers if config.processing else DEFAULT_WORKER_COUNT
 
     if not tables_config:
         logger.error("No tables specified in the configuration.")
@@ -124,9 +125,9 @@ def run(config_file_path: str):
             table = futures[future]
             try:
                 future.result()
-                logger.info(f"Completed processing table '{table}'")
+                logger.info(f"Completed processing table '{table.name}'")
             except Exception as e:
-                logger.error(f"Error processing table '{table}': {e}")
+                logger.error(f"Error processing table '{table.name}': {e}")
 
     state.store_state()
 

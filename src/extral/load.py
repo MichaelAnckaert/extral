@@ -14,8 +14,8 @@
 import json
 import logging
 
-from extral.config import DatabaseConfig, TableConfig
-from extral.connectors import postgresql
+from extral.config import DatabaseConfig, TableConfig, LoadConfig, LoadStrategy, ReplaceMethod
+from extral.connectors import PostgreSQLConnector, MySQLConnector
 from extral.database import DatabaseTypeTranslator
 from extral.schema import DatabaseSchema, TargetDatabaseSchema
 
@@ -28,7 +28,7 @@ DEFAULT_REPLACE_STRATEGY = "recreate"
 def _create_target_database_schema(
     destination_config: DatabaseConfig, schema: DatabaseSchema
 ) -> TargetDatabaseSchema:
-    destination_type = destination_config.get("type")
+    destination_type = destination_config.type
     if destination_type not in ["mysql", "postgresql"]:
         logger.error("Unsupported destination type: %s", destination_type)
         raise ValueError(f"Unsupported destination type: {destination_type}")
@@ -54,10 +54,10 @@ def load_data(
     file_path: str,
     schema_path: str,
 ):
-    table_name = table_config["name"]
+    table_name = table_config.name
 
     logger.info(
-        f"Loading data for table '{table_name}' from file '{file_path}' to destination '{destination_config['database']}'"
+        f"Loading data for table '{table_name}' from file '{file_path}' to destination '{destination_config.database}'"
     )
 
     with open(schema_path, "r") as schema_file:
@@ -66,50 +66,52 @@ def load_data(
 
     # TODO: if incremental, verify database schema and recreate + full load if different!
 
-    if destination_config.get("type") == "postgresql":
-        connector = postgresql.PostgresqlConnector()
-        connector.connect(destination_config)
-
-        # Handle strategy
-        strategy = table_config.get("strategy") or DEFAULT_STRATEGY
-        replace_method = DEFAULT_REPLACE_STRATEGY  # Initialize here to avoid unbound variable
+    destination_type = destination_config.type
+    
+    # Get the appropriate connector
+    if destination_type == "postgresql":
+        connector = PostgreSQLConnector()
+    elif destination_type == "mysql":
+        connector = MySQLConnector()
+    else:
+        logger.error(f"Unsupported destination type: {destination_type}")
+        raise ValueError(f"Unsupported destination type: {destination_type}")
+    
+    # Connect and handle the loading
+    connector.connect(destination_config)
+    
+    try:
+        # Create LoadConfig from table_config
+        load_config = LoadConfig(
+            strategy=table_config.strategy,
+            replace_method=table_config.replace.how if table_config.replace else ReplaceMethod.RECREATE,
+            merge_key=table_config.merge_key,
+            batch_size=table_config.batch_size
+        )
         
-        # Execute the strategy
-        if strategy == "replace":
-            replace_config = table_config.get("replace")
-            if replace_config:
-                replace_method = replace_config.get("how") or DEFAULT_REPLACE_STRATEGY
-
-            if replace_method == "truncate":
+        # Handle table creation/truncation for replace strategy
+        if load_config.strategy == LoadStrategy.REPLACE:
+            if load_config.replace_method == ReplaceMethod.RECREATE:
+                # Recreate the table, dropping it first
+                connector.create_table(table_name, target_schema)
+            elif load_config.replace_method == ReplaceMethod.TRUNCATE:
                 # Only truncate the table, keeping the structure
                 connector.truncate_table(table_name)
-            elif replace_method == "recreate":
-                # Recreate the table, dropping it first
-                connector.create_table(table_name, dbschema=target_schema)
             else:
                 logger.error(
-                    f"Unsupported replace strategy '{replace_method}' for table '{table_name}'"
+                    f"Unsupported replace method '{load_config.replace_method.value}' for table '{table_name}'"
                 )
-                raise ValueError(f"Unsupported replace strategy: {replace_method}")
-            
-            connector.load_table(
-                table_config,
-                file_path=file_path,
-            )
-        elif strategy == "merge":
-            merge_key = table_config.get("merge_key")
-            if not merge_key:
-                logger.error(
-                    f"Merge strategy requires a 'merge_key' for table '{table_name}'"
-                )
-                raise ValueError(f"Merge key not specified for table '{table_name}'")
-            connector.load_table(
-                table_config,
-                file_path=file_path,
-            )
-
-        elif strategy == "append":
-            connector.load_table(
-                table_config,
-                file_path=file_path,
-            )
+                raise ValueError(f"Unsupported replace method: {load_config.replace_method.value}")
+        
+        # Read data from file
+        with open(file_path, "rb") as file:
+            import extral.store as store
+            data_bytes = store.decompress_data(file.read())
+            data_str = data_bytes.decode("utf-8")
+            data = json.loads(data_str)
+        
+        # Use the new load_data method
+        connector.load_data(table_name, data, load_config)
+        
+    finally:
+        connector.disconnect()

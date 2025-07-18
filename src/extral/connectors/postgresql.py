@@ -192,6 +192,9 @@ class PostgresqlConnector(DatabaseInterface):
         schema: str = self.config.get("schema") or "public"
         logger.debug(f"Truncating table '{table_name}' in schema '{schema}'")
 
+        if not self.is_table_exists(table_name):
+            return
+
         self.cursor.execute(f"TRUNCATE TABLE {schema}.{table_name} CASCADE;")
         self.connection.commit()
 

@@ -21,6 +21,7 @@ from typing import Any, Dict, Generator, Tuple
 
 import pymysql.cursors
 
+from extral import schema
 from extral.connectors.database.generic import DatabaseConnector
 from extral.config import DatabaseConfig, ExtractConfig, LoadConfig, LoadStrategy
 from extral.database import DatabaseRecord
@@ -79,7 +80,17 @@ class MySQLConnector(DatabaseConnector):
             logger.debug(f"Running SQL: {sql_query}")
             cursor.execute(sql_query)
             result = cursor.fetchall()
-            return tuple(result)
+
+            schema = [
+                {
+                    "Field": column["Field"],
+                    "type": column["Type"],
+                    "nullable": column["Null"] == "YES",
+                }
+                for column in result
+            ]
+
+            return tuple(schema)
     
     def create_table(self, table_name: str, schema: TargetDatabaseSchema) -> None:
         """Create a table with the specified schema."""

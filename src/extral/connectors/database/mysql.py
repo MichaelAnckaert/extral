@@ -96,7 +96,7 @@ class MySQLConnector(DatabaseConnector):
         """Create a table with the specified schema."""
         logger.debug(f"Creating table '{table_name}' with schema: {schema}")
         
-        columns = []
+        columns: list[str] = []
         for column_name, column_info in schema["schema"].items():
             column_type = column_info["type"]
             nullable = "NULL" if column_info.get("nullable", False) else "NOT NULL"

@@ -94,10 +94,16 @@ class DatabaseConfig:
     database: str
     schema: Optional[str] = None
     charset: str = "utf8mb4"
+    tables: list["TableConfig"] = field(default_factory=list)
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "DatabaseConfig":
         """Create DatabaseConfig from dictionary."""
+        # Parse tables if present
+        tables = []
+        if "tables" in data:
+            tables = [TableConfig.from_dict(table_data) for table_data in data["tables"]]
+        
         return cls(
             type=data["type"],
             host=data["host"],
@@ -106,7 +112,79 @@ class DatabaseConfig:
             password=data["password"],
             database=data["database"],
             schema=data.get("schema"),
-            charset=data.get("charset", "utf8mb4")
+            charset=data.get("charset", "utf8mb4"),
+            tables=tables
+        )
+
+
+@dataclass
+class FileItemConfig:
+    """Configuration for a single file item."""
+    name: str  # Logical name for the file (like table name)
+    format: str  # "csv", "json"
+    file_path: Optional[str] = None
+    http_path: Optional[str] = None
+    options: Dict[str, Any] = field(default_factory=dict)
+    strategy: LoadStrategy = LoadStrategy.REPLACE
+    merge_key: Optional[str] = None
+    batch_size: Optional[int] = None
+    
+    def __post_init__(self):
+        """Validate configuration after initialization."""
+        if not self.file_path and not self.http_path:
+            raise ValueError("Either file_path or http_path must be provided")
+        if self.file_path and self.http_path:
+            raise ValueError("Cannot specify both file_path and http_path")
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "FileItemConfig":
+        """Create FileItemConfig from dictionary."""
+        strategy_str = data.get("strategy", "replace")
+        strategy = LoadStrategy(strategy_str)
+        
+        return cls(
+            name=data["name"],
+            format=data["format"],
+            file_path=data.get("file_path"),
+            http_path=data.get("http_path"),
+            options=data.get("options", {}),
+            strategy=strategy,
+            merge_key=data.get("merge_key"),
+            batch_size=data.get("batch_size")
+        )
+
+
+@dataclass
+class FileConfig:
+    """Configuration for file connections."""
+    type: str  # "file"
+    files: list[FileItemConfig] = field(default_factory=list)
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "FileConfig":
+        """Create FileConfig from dictionary."""
+        # Handle both single file and multiple files
+        files = []
+        if "files" in data:
+            # New format with multiple files
+            files = [FileItemConfig.from_dict(file_data) for file_data in data["files"]]
+        elif "format" in data:
+            # Legacy single file format - convert to FileItemConfig
+            file_item = FileItemConfig.from_dict({
+                "name": data.get("name", "file"),
+                "format": data["format"],
+                "file_path": data.get("file_path"),
+                "http_path": data.get("http_path"),
+                "options": data.get("options", {}),
+                "strategy": data.get("strategy", "replace"),
+                "merge_key": data.get("merge_key"),
+                "batch_size": data.get("batch_size")
+            })
+            files = [file_item]
+        
+        return cls(
+            type=data["type"],
+            files=files
         )
 
 
@@ -173,53 +251,136 @@ class TableConfig:
         )
 
 
+ConnectorConfig = Union[DatabaseConfig, FileConfig]
+
+
+@dataclass
+class PipelineConfig:
+    """Configuration for a single pipeline."""
+    name: str
+    source: ConnectorConfig
+    destination: ConnectorConfig
+    workers: Optional[int] = None
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PipelineConfig":
+        """Create PipelineConfig from dictionary."""
+        name = data.get("name", "default")
+        
+        # Parse source config
+        source_data = data.get("source", {})
+        if source_data.get("type") == "file":
+            source_config = FileConfig.from_dict(source_data)
+        else:
+            source_config = DatabaseConfig.from_dict(source_data)
+        
+        # Parse destination config
+        destination_data = data.get("destination", {})
+        if destination_data.get("type") == "file":
+            destination_config = FileConfig.from_dict(destination_data)
+        else:
+            destination_config = DatabaseConfig.from_dict(destination_data)
+        
+        return cls(
+            name=name,
+            source=source_config,
+            destination=destination_config,
+            workers=data.get("workers")
+        )
+
+
 @dataclass
 class Config:
     """Main configuration object."""
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     processing: ProcessingConfig = field(default_factory=ProcessingConfig)
-    source: DatabaseConfig = field(default_factory=lambda: DatabaseConfig("", "", 0, "", "", ""))
-    destination: DatabaseConfig = field(default_factory=lambda: DatabaseConfig("", "", 0, "", "", ""))
-    tables: list[TableConfig] = field(default_factory=list)
+    pipelines: list[PipelineConfig] = field(default_factory=list)
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Config":
         """Create Config from dictionary."""
-        # Get single configs (take first if multiple provided)
+        # Parse logging config
         logging_data = data.get("logging", [{}])
         if isinstance(logging_data, list):
             logging_data = logging_data[0] if logging_data else {}
         logging_config = LoggingConfig.from_dict(logging_data)
         
+        # Parse processing config
         processing_data = data.get("processing", [{}])
         if isinstance(processing_data, list):
             processing_data = processing_data[0] if processing_data else {}
         processing_config = ProcessingConfig.from_dict(processing_data)
         
-        source_data = data.get("source", [])
-        if isinstance(source_data, list):
-            if not source_data:
-                raise ValueError("Source configuration is required")
-            source_data = source_data[0]
-        source_config = DatabaseConfig.from_dict(source_data)
+        # Parse pipelines
+        pipelines = []
+        if "pipelines" in data:
+            # New multi-pipeline format
+            pipelines = [PipelineConfig.from_dict(pipeline_data) for pipeline_data in data["pipelines"]]
+        else:
+            # Legacy single-pipeline format - convert to pipeline
+            if "source" not in data or "destination" not in data:
+                raise ValueError("Either 'pipelines' or both 'source' and 'destination' must be provided")
+            
+            # Get source and destination data
+            source_data = data.get("source", [])
+            if isinstance(source_data, list):
+                if not source_data:
+                    raise ValueError("Source configuration is required")
+                source_data = source_data[0]
+            
+            destination_data = data.get("destination", [])
+            if isinstance(destination_data, list):
+                if not destination_data:
+                    raise ValueError("Destination configuration is required")
+                destination_data = destination_data[0]
+            
+            # Add tables to source config for backward compatibility
+            if "tables" in data:
+                source_data["tables"] = data["tables"]
+            
+            # Create single pipeline from legacy config
+            pipeline_data = {
+                "name": "default",
+                "source": source_data,
+                "destination": destination_data,
+                "workers": processing_config.workers
+            }
+            pipelines = [PipelineConfig.from_dict(pipeline_data)]
         
-        destination_data = data.get("destination", [])
-        if isinstance(destination_data, list):
-            if not destination_data:
-                raise ValueError("Destination configuration is required")
-            destination_data = destination_data[0]
-        destination_config = DatabaseConfig.from_dict(destination_data)
-        
-        # Tables remain as a list
-        table_configs = [TableConfig.from_dict(cfg) for cfg in data.get("tables", [])]
+        # Validate pipelines
+        cls._validate_pipelines(pipelines)
         
         return cls(
             logging=logging_config,
             processing=processing_config,
-            source=source_config,
-            destination=destination_config,
-            tables=table_configs
+            pipelines=pipelines
         )
+    
+    @classmethod
+    def _validate_pipelines(cls, pipelines: list[PipelineConfig]) -> None:
+        """Validate pipeline configuration."""
+        if not pipelines:
+            raise ValueError("At least one pipeline must be configured")
+        
+        # Check for duplicate pipeline names
+        names = [pipeline.name for pipeline in pipelines]
+        if len(names) != len(set(names)):
+            raise ValueError("Pipeline names must be unique")
+        
+        # Validate each pipeline has valid source and destination
+        for pipeline in pipelines:
+            if not pipeline.source:
+                raise ValueError(f"Pipeline '{pipeline.name}' must have a source configuration")
+            if not pipeline.destination:
+                raise ValueError(f"Pipeline '{pipeline.name}' must have a destination configuration")
+            
+            # Validate source has tables/files
+            if isinstance(pipeline.source, DatabaseConfig):
+                if not pipeline.source.tables:
+                    raise ValueError(f"Database source in pipeline '{pipeline.name}' must have at least one table")
+            elif isinstance(pipeline.source, FileConfig):
+                if not pipeline.source.files:
+                    raise ValueError(f"File source in pipeline '{pipeline.name}' must have at least one file")
     
     @classmethod
     def read_config(cls, path: str) -> "Config":

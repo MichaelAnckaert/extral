@@ -21,9 +21,8 @@ from typing import Any, Dict, Generator, Tuple
 
 import pymysql.cursors
 
-from extral import schema
 from extral.connectors.database.generic import DatabaseConnector
-from extral.config import DatabaseConfig, ExtractConfig, LoadConfig, LoadStrategy
+from extral.config import DatabaseConfig, ExtractConfig, LoadConfig
 from extral.database import DatabaseRecord
 from extral.schema import TargetDatabaseSchema
 

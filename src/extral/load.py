@@ -14,8 +14,9 @@
 import json
 import logging
 
-from extral.config import DatabaseConfig, TableConfig, LoadConfig, LoadStrategy, ReplaceMethod
+from extral.config import TableConfig, LoadConfig, LoadStrategy, ReplaceMethod, ConnectorConfig
 from extral.connectors import PostgreSQLConnector, MySQLConnector
+from extral.connectors.file import CSVConnector, JSONConnector
 from extral.database import DatabaseTypeTranslator
 from extral.schema import DatabaseSchema, TargetDatabaseSchema
 
@@ -26,12 +27,16 @@ DEFAULT_REPLACE_STRATEGY = "recreate"
 
 
 def _create_target_database_schema(
-    destination_config: DatabaseConfig, schema: DatabaseSchema
+    destination_config: ConnectorConfig, schema: DatabaseSchema
 ) -> TargetDatabaseSchema:
     destination_type = destination_config.type
-    if destination_type not in ["mysql", "postgresql"]:
+    if destination_type not in ["mysql", "postgresql", "file"]:
         logger.error("Unsupported destination type: %s", destination_type)
         raise ValueError(f"Unsupported destination type: {destination_type}")
+    
+    # For file destinations, return schema as-is (no translation needed)
+    if destination_type == "file":
+        return schema
 
     translator = DatabaseTypeTranslator()
     source_schema = schema["schema_source"]
@@ -49,16 +54,21 @@ def _create_target_database_schema(
 
 
 def load_data(
-    destination_config: DatabaseConfig,
+    destination_config: ConnectorConfig,
     table_config: TableConfig,
     file_path: str,
     schema_path: str,
 ):
     table_name = table_config.name
 
-    logger.info(
-        f"Loading data for table '{table_name}' from file '{file_path}' to destination '{destination_config.database}'"
-    )
+    if hasattr(destination_config, 'database'):
+        logger.info(
+            f"Loading data for table '{table_name}' from file '{file_path}' to destination '{destination_config.database}'"
+        )
+    else:
+        logger.info(
+            f"Loading data for table '{table_name}' from file '{file_path}' to destination file"
+        )
 
     with open(schema_path, "r") as schema_file:
         schema = json.load(schema_file)
@@ -71,14 +81,22 @@ def load_data(
     # Get the appropriate connector
     if destination_type == "postgresql":
         connector = PostgreSQLConnector()
+        connector.connect(destination_config)
     elif destination_type == "mysql":
         connector = MySQLConnector()
+        connector.connect(destination_config)
+    elif destination_type == "file":
+        # For file connectors
+        file_config = destination_config  # type: ignore
+        if file_config.format == "csv":
+            connector = CSVConnector(file_config)
+        elif file_config.format == "json":
+            connector = JSONConnector(file_config)
+        else:
+            raise ValueError(f"Unsupported file format: {file_config.format}")
     else:
         logger.error(f"Unsupported destination type: {destination_type}")
         raise ValueError(f"Unsupported destination type: {destination_type}")
-    
-    # Connect and handle the loading
-    connector.connect(destination_config)
     
     try:
         # Create LoadConfig from table_config
@@ -89,8 +107,8 @@ def load_data(
             batch_size=table_config.batch_size
         )
         
-        # Handle table creation/truncation for replace strategy
-        if load_config.strategy == LoadStrategy.REPLACE:
+        # Handle table creation/truncation for replace strategy (only for database connectors)
+        if destination_type in ["mysql", "postgresql"] and load_config.strategy == LoadStrategy.REPLACE:
             if load_config.replace_method == ReplaceMethod.RECREATE:
                 # Recreate the table, dropping it first
                 connector.create_table(table_name, target_schema)
@@ -114,4 +132,6 @@ def load_data(
         connector.load_data(table_name, data, load_config)
         
     finally:
-        connector.disconnect()
+        # Only disconnect database connectors
+        if destination_type in ["mysql", "postgresql"]:
+            connector.disconnect()

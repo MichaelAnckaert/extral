@@ -25,7 +25,7 @@ import psycopg2
 from psycopg2 import sql
 
 from extral.connectors.database.generic import DatabaseConnector
-from extral.config import DatabaseConfig, ExtractConfig, LoadConfig, LoadStrategy, ReplaceMethod
+from extral.config import DatabaseConfig, ExtractConfig, LoadConfig, ReplaceMethod
 from extral.database import DatabaseRecord
 from extral.schema import TargetDatabaseSchema
 

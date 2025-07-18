@@ -31,3 +31,5 @@ build-backend = "hatchling.build"
 
 [tool.hatch.version]
 path = "src/extral/__init__.py"
+
+[tool.mypy]

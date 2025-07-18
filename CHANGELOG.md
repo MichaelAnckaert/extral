@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 - TO BE RELEASED
+Development notes
+
+Bug fixes:
+- Issue Bug #4: Column names that are a database keyword cause an error
+
 ## 0.1.1 - 2025-07-18
 Changes in this version
  

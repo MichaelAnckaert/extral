@@ -103,7 +103,7 @@ class PostgresqlConnector(DatabaseInterface):
         for column_name, column_info in dbschema["schema"].items():
             column_type = column_info["type"]
             nullable = "NULL" if column_info.get("nullable", False) else "NOT NULL"
-            columns.append(f"{column_name} {column_type} {nullable}")
+            columns.append(f"\"{column_name}\" {column_type} {nullable}")
 
         create_table_query = f"DROP TABLE IF EXISTS {schema}.{table_name}; CREATE TABLE {schema}.{table_name} ({', '.join(columns)});"
 

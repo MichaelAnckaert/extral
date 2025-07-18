@@ -123,7 +123,7 @@ class PostgreSQLConnector(DatabaseConnector):
         db_schema = self.config.schema or "public"
         logger.debug(f"Creating table '{table_name}' with schema: {schema}")
         
-        columns = []
+        columns: list[str] = []
         for column_name, column_info in schema["schema"].items():
             column_type = column_info["type"]
             nullable = "NULL" if column_info.get("nullable", False) else "NOT NULL"
@@ -205,7 +205,6 @@ class PostgreSQLConnector(DatabaseConnector):
                     cursor.execute(sql_query)
                     results = cursor.fetchall()
                     yield self._tuple_to_dict_results(cursor, results)
-
     
     def _handle_replace_strategy(
         self, 

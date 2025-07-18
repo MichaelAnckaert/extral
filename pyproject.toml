@@ -3,10 +3,10 @@ name = "Extral"
 dynamic = ["version"]
 description = "Python Powered ETL"
 authors = [
-    {name="Sinax GCV", email="michael@sinax.be"}
+    {name="Michael Anckaert", email="michael@sinax.be"}
 ]
 maintainers = [
-    {name="Sinax GCV", email="michael@sinax.be"}
+    {name="Michael Anckaert", email="michael@sinax.be"}
 ]
 license = "Apache-2.0"
 readme = "README.md"

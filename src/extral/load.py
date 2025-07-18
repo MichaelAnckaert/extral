@@ -22,6 +22,7 @@ from extral.schema import DatabaseSchema, TargetDatabaseSchema
 logger = logging.getLogger(__name__)
 
 DEFAULT_STRATEGY = "replace"
+DEFAULT_REPLACE_STRATEGY = "recreate"
 
 
 def _create_target_database_schema(
@@ -70,13 +71,40 @@ def load_data(
         connector = postgresql.PostgresqlConnector()
         connector.connect(destination_config)
 
-        if incremental is None or not connector.is_table_exists(table_name):
-            connector.create_table(table_name, dbschema=target_schema)
-
         # Handle strategy
         strategy = table_config.get("strategy") or DEFAULT_STRATEGY
+        
+        # Determine if we need to create/recreate the table
+        should_create_table = False
+        replace_strategy = DEFAULT_REPLACE_STRATEGY  # Initialize here to avoid unbound variable
+        
         if strategy == "replace":
-            connector.truncate_table(table_name)
+            # Check for replace sub-strategy
+            replace_config = table_config.get("replace")
+            if replace_config:
+                replace_strategy = replace_config.get("how") or DEFAULT_REPLACE_STRATEGY
+            
+            if replace_strategy == "recreate":
+                # Always create table for recreate strategy
+                should_create_table = True
+            else:
+                # For truncate, only create if doesn't exist
+                should_create_table = not connector.is_table_exists(table_name)
+        else:
+            # For non-replace strategies, create if doesn't exist or not incremental
+            should_create_table = incremental is None or not connector.is_table_exists(table_name)
+        
+        if should_create_table:
+            connector.create_table(table_name, dbschema=target_schema)
+        
+        # Execute the strategy
+        if strategy == "replace":
+            
+            if replace_strategy == "truncate":
+                # Only truncate the table, keeping the structure
+                connector.truncate_table(table_name)
+            # For recreate, the connector.create_table() method internally handles the drop and recreate process
+            
             connector.load_table(
                 table_config,
                 file_path=file_path,

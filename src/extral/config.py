@@ -49,6 +49,13 @@ IncrementalConfig = TypedDict(
     },
 )
 
+ReplaceConfig = TypedDict(
+    "ReplaceConfig",
+    {
+        "how": Optional[Literal["truncate", "recreate"]],
+    },
+)
+
 TableConfig = TypedDict(
     "TableConfig",
     {
@@ -57,6 +64,7 @@ TableConfig = TypedDict(
         "merge_key": Optional[str],
         "batch_size": Optional[int],
         "incremental": Optional[IncrementalConfig],
+        "replace": Optional[ReplaceConfig],
     },
 )
 

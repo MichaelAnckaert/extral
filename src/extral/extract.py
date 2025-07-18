@@ -16,8 +16,9 @@ import logging
 from typing import Generator, Optional, Tuple
 
 from extral import encoder
-from extral.config import DatabaseConfig, ExtractConfig, IncrementalConfig, TableConfig
+from extral.config import ExtractConfig, IncrementalConfig, TableConfig, ConnectorConfig
 from extral.connectors import MySQLConnector, PostgreSQLConnector
+from extral.connectors.file import CSVConnector, JSONConnector
 from extral.database import DatabaseRecord
 from extral.schema import (
     SchemaCreateException,
@@ -31,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 def extract_schema_from_source(
-    source_config: DatabaseConfig, table_name: str
+    source_config: ConnectorConfig, table_name: str
 ) -> Optional[TargetDatabaseSchema]:
     """Determine the schema for a given table."""
     source_type = source_config.type
@@ -54,25 +55,44 @@ def extract_schema_from_source(
             raise SchemaCreateException(
                 f"Could not extract schema for table '{table_name}' from PostgreSQL source"
             )
+    elif source_type == "file":
+        # For file connectors, we need to use the infer_schema method
+        file_config = source_config  # type: ignore
+        if file_config.format == "csv":
+            connector = CSVConnector(file_config)
+        elif file_config.format == "json":
+            connector = JSONConnector(file_config)
+        else:
+            raise ValueError(f"Unsupported file format: {file_config.format}")
+        
+        # Infer schema from file
+        schema_dict = connector.infer_schema(table_name)
+        
+        # Convert to TargetDatabaseSchema format
+        inferred_schema: TargetDatabaseSchema = {
+            "schema_source": f"file_{file_config.format}",
+            "schema": schema_dict
+        }
+        return inferred_schema
     else:
         logger.error(f"Unsupported source type: {source_type}")
         raise ValueError(f"Unsupported source type: {source_type}")
 
-    inferred_schema: TargetDatabaseSchema = {"schema_source": source_type, "schema": {}}
+    db_inferred_schema: TargetDatabaseSchema = {"schema_source": source_type, "schema": {}}
     for column in schema:
         column_name = column["Field"]
         column_type = column["Type"]
         is_nullable = column["Null"] == "YES"
-        inferred_schema["schema"][column_name] = {
+        db_inferred_schema["schema"][column_name] = {
             "type": column_type,
             "nullable": is_nullable,
         }
 
-    return inferred_schema
+    return db_inferred_schema
 
 
 def _extract_data(
-    source_config: DatabaseConfig,
+    source_config: ConnectorConfig,
     table_config: TableConfig,
     incremental: Optional[IncrementalConfig],
 ) -> Generator[list[DatabaseRecord], None, None]:
@@ -145,6 +165,17 @@ def _extract_data(
         connector = PostgreSQLConnector()
         connector.connect(source_config)
         return connector.extract_data(table_name, extract_config)
+    elif source_type == "file":
+        # For file connectors
+        file_config = source_config  # type: ignore
+        if file_config.format == "csv":
+            connector = CSVConnector(file_config)
+        elif file_config.format == "json":
+            connector = JSONConnector(file_config)
+        else:
+            raise ValueError(f"Unsupported file format: {file_config.format}")
+        
+        return connector.extract_data(table_name, extract_config)
     else:
         logger.error(f"Unsupported source type: {source_type}")
         raise ValueError(f"Unsupported source type: {source_type}")
@@ -179,7 +210,7 @@ def _infer_schema_from_data(
 
 
 def extract_table(
-    source_config: DatabaseConfig, table_config: TableConfig
+    source_config: ConnectorConfig, table_config: TableConfig
 ) -> Tuple[Optional[str], Optional[str]]:
     table_name = table_config.name
     incremental = table_config.incremental

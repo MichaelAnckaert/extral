@@ -12,17 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from typing import Any, Generator, Optional
+
 from extral.config import DatabaseConfig, TableConfig
 from extral.database import DatabaseRecord
 from extral.schema import TargetDatabaseSchema
 
+from .connector import Connector
+from .database import DatabaseConnector, PostgreSQLConnector, MySQLConnector
+
 # Legacy types for backward compatibility
 ExtractConfig = dict[str, Optional[str | int | None]]
 DEFAULT_BATCH_SIZE = 50000
-
-# Import new connector interfaces
-from .connector import Connector
-from .database import DatabaseConnector, PostgreSQLConnector, MySQLConnector
 
 # Legacy DatabaseInterface for backward compatibility
 class DatabaseInterface:

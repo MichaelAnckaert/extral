@@ -92,7 +92,7 @@ tables:
 ### Replace
 The *replace* strategy ensures that the destination table contains only the latest data extracted from the source. Use this strategy when you want to completely overwrite the existing data.
 
-By default, the replace strategy will drop and recreate the destination table. You can configure the behavior using the `replace` configuration:
+By default, the replace strategy will drop and recreate the destination table. You can configure how the strategy behaves using the `replace` configuration:
 
 - **recreate** (default): Drops and recreates the destination table with the latest schema from the source
 - **truncate**: Deletes all records from the destination table while preserving the table structure

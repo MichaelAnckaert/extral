@@ -3,8 +3,13 @@ API Reference
 
 This section provides detailed documentation of Extral's Python API.
 
+.. note::
+   Extral follows an Extract-Store-Load architecture with intermediate storage. The API is organized around connectors, handlers, and core processing modules.
+
 Configuration Module
 --------------------
+
+Configuration management and validation for multi-pipeline setups.
 
 .. automodule:: extral.config
    :members:
@@ -14,7 +19,65 @@ Configuration Module
 Main Module
 -----------
 
+Main entry point and pipeline orchestration.
+
 .. automodule:: extral.main
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Context and Events
+------------------
+
+Application Context
+~~~~~~~~~~~~~~~~~~~
+
+Central coordinator for events, state, and configuration.
+
+.. automodule:: extral.context
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Event System
+~~~~~~~~~~~~
+
+Event-driven architecture for monitoring and coordination.
+
+.. automodule:: extral.events
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Handlers
+--------
+
+Console Handler
+~~~~~~~~~~~~~~~
+
+Traditional console output handler.
+
+.. automodule:: extral.handlers.console_handler
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+TUI Handler
+~~~~~~~~~~~
+
+Interactive Text User Interface handler.
+
+.. automodule:: extral.handlers.tui_handler
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Stats Handler
+~~~~~~~~~~~~~
+
+Statistics collection and reporting handler.
+
+.. automodule:: extral.handlers.stats_handler
    :members:
    :undoc-members:
    :show-inheritance:
@@ -98,6 +161,8 @@ Core Modules
 Extract Module
 ~~~~~~~~~~~~~~
 
+Data extraction from sources with batch processing and incremental loading.
+
 .. automodule:: extral.extract
    :members:
    :undoc-members:
@@ -105,6 +170,8 @@ Extract Module
 
 Load Module
 ~~~~~~~~~~~
+
+Data loading into destinations with multiple strategies (append, replace, merge).
 
 .. automodule:: extral.load
    :members:
@@ -137,6 +204,8 @@ Store Module
 
 Validation Module
 ~~~~~~~~~~~~~~~~~
+
+Pre-flight validation for configuration and connectivity testing.
 
 .. automodule:: extral.validation
    :members:

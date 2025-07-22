@@ -1,29 +1,51 @@
 Configuration
 =============
 
-Extral uses YAML configuration files to define ETL pipelines. This section documents the complete configuration syntax and all available options.
+Extral uses YAML configuration files to define EL (Extract-Load) pipelines with intermediate storage. This section documents the complete configuration syntax and all available options.
+
+.. note::
+   Extral follows an **Extract-Store-Load** workflow:
+   
+   1. **Extract**: Data is extracted from sources (databases, files, HTTP URLs) in batches
+   2. **Store**: Data is compressed and stored in intermediate files (``output/`` directory)  
+   3. **Load**: Data is loaded from intermediate storage into destinations with configurable strategies
+   
+   This pattern provides fault tolerance, parallel processing capabilities, and efficient memory usage.
 
 Configuration File Structure
 -----------------------------
 
-The configuration file is structured in the following main sections:
+Extral uses a **multi-pipeline configuration format** that allows you to define multiple data migration pipelines in a single file:
 
 .. code-block:: yaml
 
+   # Global settings
    logging:
      level: info
+     mode: console  # or tui
 
    processing:
      workers: 4
 
+   # Define one or more pipelines
    pipelines:
-     - name: pipeline1
+     - name: database_migration
        source:
-         # source configuration
+         type: mysql
+         # database source configuration
        destination:
-         # destination configuration
-       tables:  # or files:
-         # table/file configurations
+         type: postgresql  
+         # database destination configuration
+       tables:
+         # table configurations
+     
+     - name: file_import
+       source:
+         type: file
+         # file source configuration
+       destination:
+         type: postgresql
+         # database destination configuration
 
 Global Configuration
 --------------------
@@ -37,10 +59,12 @@ Controls the logging behavior of Extral.
 
    logging:
      level: info  # debug, info, warning, error, critical
+     mode: console  # console, tui
 
 **Options:**
 
 * ``level`` (string, default: "info") - Log level for the application
+* ``mode`` (string, default: "console") - Display mode: "console" for standard terminal output, "tui" for interactive Text User Interface
 
 Processing Configuration
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -119,24 +143,61 @@ MySQL and PostgreSQL connectors share the same configuration structure:
 File Connectors
 ~~~~~~~~~~~~~~~
 
-File connectors support CSV and JSON files from local filesystem or HTTP URLs:
+File connectors support CSV and JSON files from local filesystem or HTTP/HTTPS URLs. File sources can only be used as sources, not destinations.
+
+**Basic File Source Configuration:**
 
 .. code-block:: yaml
 
-   source:  # or destination:
+   source:
      type: file
      files:
        - name: customers_data
          format: csv  # or json
          file_path: /path/to/customers.csv
-         # OR
-         http_path: https://example.com/customers.csv
-         options:
-           delimiter: ","
-           quotechar: "\""
-           encoding: utf-8
          strategy: replace
-         merge_key: id
+         batch_size: 10000
+       - name: orders_data
+         format: json
+         http_path: https://api.example.com/orders.json
+         strategy: merge
+         merge_key: order_id
+
+**CSV File Configuration:**
+
+.. code-block:: yaml
+
+   source:
+     type: file
+     files:
+       - name: customer_data
+         format: csv
+         file_path: /data/customers.csv
+         options:
+           delimiter: ","          # Field delimiter
+           quotechar: "\""         # Quote character  
+           encoding: utf-8         # File encoding
+           header: true           # First row contains headers
+           skip_rows: 0           # Number of rows to skip at start
+         strategy: merge
+         merge_key: customer_id
+         batch_size: 5000
+
+**JSON File Configuration:**
+
+.. code-block:: yaml
+
+   source:
+     type: file  
+     files:
+       - name: product_catalog
+         format: json
+         http_path: https://api.example.com/products.json
+         options:
+           json_lines: false      # true for JSONL format, false for JSON array
+           encoding: utf-8        # File encoding
+         strategy: replace
+         batch_size: 1000
 
 **File Connector Options:**
 
@@ -145,14 +206,27 @@ File connectors support CSV and JSON files from local filesystem or HTTP URLs:
 
 **File Item Options:**
 
-* ``name`` (string, required) - Logical name for the file (like table name)
+* ``name`` (string, required) - Logical name for the dataset (like table name)
 * ``format`` (string, required) - "csv" or "json"
 * ``file_path`` (string) - Local file path (either this or http_path required)
 * ``http_path`` (string) - HTTP/HTTPS URL (either this or file_path required)
-* ``options`` (object, optional) - Format-specific options
+* ``options`` (object, optional) - Format-specific parsing options
 * ``strategy`` (string, optional) - Load strategy: "append", "replace", "merge" (default: "replace")
 * ``merge_key`` (string) - Required if strategy is "merge"
-* ``batch_size`` (integer, optional) - Number of records to process per batch
+* ``batch_size`` (integer, optional) - Number of records to process per batch (default: 50000)
+
+**CSV Options:**
+
+* ``delimiter`` (string, default: ",") - Field delimiter character
+* ``quotechar`` (string, default: "\"") - Quote character for fields
+* ``encoding`` (string, default: "utf-8") - File text encoding
+* ``header`` (boolean, default: true) - Whether first row contains column headers
+* ``skip_rows`` (integer, default: 0) - Number of rows to skip at beginning
+
+**JSON Options:**
+
+* ``json_lines`` (boolean, default: false) - true for JSONL format (one JSON object per line), false for JSON array
+* ``encoding`` (string, default: "utf-8") - File text encoding
 
 Table Configuration
 -------------------
@@ -318,23 +392,3 @@ Here's a complete configuration file example:
          database: warehouse
          schema: staging
 
-Legacy Configuration Format
----------------------------
-
-Extral also supports a legacy single-pipeline configuration format for backward compatibility:
-
-.. code-block:: yaml
-
-   # Legacy format - automatically converted to pipeline format internally
-   source:
-     type: mysql
-     # ... source configuration
-
-   destination:
-     type: postgresql
-     # ... destination configuration
-
-   tables:
-     # ... table configurations
-
-This format is internally converted to the new pipeline format with a default pipeline name.

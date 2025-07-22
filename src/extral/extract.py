@@ -13,7 +13,7 @@
 # limitations under the License.
 import json
 import logging
-from typing import Generator, Optional, Tuple, cast
+from typing import Callable, Generator, Optional, Tuple, cast
 
 from extral import encoder
 from extral.config import (
@@ -193,6 +193,7 @@ def extract_table(
     source_config: ConnectorConfig,
     dataset_config: TableConfig | FileItemConfig,
     pipeline_name: str,
+    quit_check: Optional[Callable[[], bool]] = None,
 ) -> Tuple[Optional[str], Optional[str]]:
     dataset_name = dataset_config.name
     incremental = getattr(dataset_config, "incremental", None)
@@ -269,6 +270,11 @@ def extract_table(
 
         full_data: list[DatabaseRecord] = []
         for data in datagen:
+            # Check for quit signal
+            if quit_check and quit_check():
+                logger.info("Extract cancelled for dataset '%s' - quit requested", dataset_name)
+                return None, None
+                
             if not data:
                 logger.info("No data extracted from dataset '%s'", dataset_name)
                 continue

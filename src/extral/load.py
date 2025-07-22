@@ -13,7 +13,7 @@
 # limitations under the License.
 import json
 import logging
-from typing import Optional, cast, Union
+from typing import Callable, Optional, cast, Union
 
 from extral.config import (
     TableConfig,
@@ -70,6 +70,7 @@ def load_data(
     file_path: str,
     schema_path: str,
     pipeline_name: Optional[str] = None,
+    quit_check: Optional[Callable[[], bool]] = None,
 ):
     dataset_name = dataset_config.name
 
@@ -186,6 +187,11 @@ def load_data(
                 operation="data_reading",
             ) from e
 
+        # Check for quit signal before loading
+        if quit_check and quit_check():
+            logger.info("Load cancelled for dataset '%s' - quit requested", dataset_name)
+            return
+            
         # Use the new load_data method
         try:
             connector.load_data(dataset_name, data, load_config)

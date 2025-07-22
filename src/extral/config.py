@@ -69,12 +69,16 @@ class LoadConfig:
 class LoggingConfig:
     """Configuration for logging."""
 
-    level: str = "INFO"
+    level: str = "WARNING"
+    mode: str = "standard"  # "standard" or "tui"
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "LoggingConfig":
         """Create LoggingConfig from dictionary."""
-        return cls(level=data.get("level", "INFO"))
+        return cls(
+            level=data.get("level", "WARNING"),
+            mode=data.get("mode", "standard")
+        )
 
 
 @dataclass

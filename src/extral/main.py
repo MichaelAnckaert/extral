@@ -15,15 +15,14 @@ import logging
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
 from typing import Optional
 
 from extral import __version__
 from extral.config import Config, ConnectorConfig, TableConfig, FileItemConfig, DatabaseConfig
+from extral.context import ApplicationContext
 from extral.extract import extract_table
 from extral.load import load_data
 from extral.state import state
-from extral.error_tracking import ErrorTracker
 from extral.validation import PipelineValidator, format_validation_report
 
 import argparse
@@ -32,93 +31,129 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_WORKER_COUNT = 4
 
+# Global shutdown flag
+shutdown_requested = False
+
+
+def request_shutdown():
+    """Request application shutdown."""
+    global shutdown_requested
+    shutdown_requested = True
+    logger.info("Shutdown requested - stopping processing...")
+    logger.info("Setting shutdown flag - workers should exit soon")
+
+
+def is_shutdown_requested():
+    """Check if shutdown has been requested."""
+    return shutdown_requested
+
 
 def process_table(
     source_config: ConnectorConfig,
     destination_config: ConnectorConfig,
     dataset_config: TableConfig | FileItemConfig,
     pipeline_name: str,
-    error_tracker: ErrorTracker,
+    context: ApplicationContext,
 ) -> bool:
     """Process a single table/dataset. Returns True if successful, False otherwise."""
     start_time = time.time()
     try:
-        logger.info(f"Processing dataset: {dataset_config.name}")
+        # Check for shutdown before starting
+        if is_shutdown_requested():
+            logger.info(f"Dataset {dataset_config.name} - shutdown requested, skipping")
+            context.dataset_skipped(pipeline_name, dataset_config.name, "Shutdown requested")
+            return True
+            
+        context.dataset_started(pipeline_name, dataset_config.name)
 
         # Extract phase
         try:
+            # Check for shutdown before extracting
+            if is_shutdown_requested():
+                context.dataset_skipped(pipeline_name, dataset_config.name, "Shutdown requested")
+                return True
+                
             file_path, schema_path = extract_table(
-                source_config, dataset_config, pipeline_name
+                source_config, dataset_config, pipeline_name, is_shutdown_requested
             )
             if file_path is None or schema_path is None:
-                logger.info(
-                    f"Skipping dataset load for '{dataset_config.name}' as there is no data extracted."
+                context.dataset_skipped(
+                    pipeline_name, 
+                    dataset_config.name, 
+                    "No data extracted"
                 )
                 return True
         except Exception as e:
             duration = time.time() - start_time
-            error_tracker.track_error(
+            context.error_occurred(
                 pipeline=pipeline_name,
                 dataset=dataset_config.name,
                 operation="extract",
-                exception=e,
+                error=e,
                 duration_seconds=duration,
                 include_stack_trace=True,
+            )
+            context.dataset_completed(
+                pipeline_name, 
+                dataset_config.name, 
+                success=False, 
+                error=e, 
+                duration_seconds=duration
             )
             raise
 
         # Load phase
         try:
+            # Check for shutdown before loading
+            if is_shutdown_requested():
+                context.dataset_skipped(pipeline_name, dataset_config.name, "Shutdown requested")
+                return True
+                
             load_data(
                 destination_config,
                 dataset_config,
                 file_path,
                 schema_path,
                 pipeline_name,
+                is_shutdown_requested,
             )
         except Exception as e:
             duration = time.time() - start_time
-            error_tracker.track_error(
+            context.error_occurred(
                 pipeline=pipeline_name,
                 dataset=dataset_config.name,
                 operation="load",
-                exception=e,
+                error=e,
                 duration_seconds=duration,
                 include_stack_trace=True,
             )
+            context.dataset_completed(
+                pipeline_name, 
+                dataset_config.name, 
+                success=False, 
+                error=e, 
+                duration_seconds=duration
+            )
             raise
 
+        context.dataset_completed(
+            pipeline_name, 
+            dataset_config.name, 
+            success=True, 
+            duration_seconds=time.time() - start_time
+        )
         return True
 
     except Exception as e:
-        logger.error(f"Error processing dataset '{dataset_config.name}': {e}")
+        context.log_message("ERROR", f"Error processing dataset '{dataset_config.name}': {e}")
         return False
 
 
-def _setup_logging(args: argparse.Namespace):
-    config = Config.read_config(args.config)
-    logging_config = config.logging
-
-    if logging_config.level == "debug":
-        level = logging.DEBUG
-    elif logging_config.level == "info":
-        level = logging.INFO
-    elif logging_config.level == "warning":
-        level = logging.WARNING
-    elif logging_config.level == "error":
-        level = logging.ERROR
-    elif logging_config.level == "critical":
-        level = logging.CRITICAL
-    else:
-        logger.warning(
-            f"Unknown logging level '{logging_config.level}', defaulting to INFO."
-        )
-        level = logging.INFO
-
+def _setup_basic_logging():
+    """Setup minimal logging for startup errors."""
     logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+        level=logging.ERROR,
+        format="%(levelname)s: %(message)s"
     )
 
 
@@ -161,12 +196,15 @@ def main():
         action="store_true",
         help="Perform validation and show execution plan without running pipelines.",
     )
+    parser.add_argument(
+        "--tui",
+        action="store_true",
+        help="Use TUI (Text User Interface) mode for enhanced visual output.",
+    )
 
     args = parser.parse_args()
 
-    _setup_logging(args)
-
-    logger.debug(f"Parsed arguments: {args} ")
+    _setup_basic_logging()
 
     config_file_path = args.config
     run(
@@ -174,7 +212,8 @@ def main():
         args.continue_on_error, 
         args.skip_datasets or [], 
         args.validate_only, 
-        args.dry_run
+        args.dry_run,
+        args.tui
     )
 
 
@@ -184,6 +223,7 @@ def run(
     skip_datasets: Optional[list[str]] = None,
     validate_only: bool = False,
     dry_run: bool = False,
+    use_tui: bool = False,
 ):
     if skip_datasets is None:
         skip_datasets = []
@@ -191,198 +231,223 @@ def run(
     state.load_state()
     config = Config.read_config(config_file_path)
     
-    # Perform pre-flight validation
-    logger.info("Performing pre-flight validation...")
-    validator = PipelineValidator()
-    validation_report = validator.validate_configuration(config)
+    # Initialize context
+    context = ApplicationContext(config, use_tui=use_tui)
     
-    # Print validation report
-    print(format_validation_report(validation_report))
+    try:
+        # Start context (this starts event processing)
+        context.start()
+        
+        # Set up TUI shutdown callback if using TUI
+        if context.tui_handler:
+            context.tui_handler.set_shutdown_callback(request_shutdown)
+        
+        # Perform pre-flight validation
+        context.log_message("INFO", "Performing pre-flight validation...")
+        validator = PipelineValidator()
+        validation_report = validator.validate_configuration(config)
+        
+        # Print validation report (only in console mode)
+        if not use_tui:
+            print(format_validation_report(validation_report))
+        
+        # Handle validation-only mode
+        if validate_only:
+            context.log_message("INFO", "Validation complete. Exiting (--validate-only mode).")
+            sys.exit(0 if validation_report.overall_valid else 1)
     
-    # Handle validation-only mode
-    if validate_only:
-        logger.info("Validation complete. Exiting (--validate-only mode).")
-        sys.exit(0 if validation_report.overall_valid else 1)
+        # Check if validation failed
+        if not validation_report.overall_valid:
+            context.log_message("ERROR", "Configuration validation failed. Cannot proceed with execution.")
+            if not use_tui:
+                context.log_message("ERROR", "Use --validate-only for detailed validation report.")
+            sys.exit(1)
     
-    # Check if validation failed
-    if not validation_report.overall_valid:
-        logger.error("Configuration validation failed. Cannot proceed with execution.")
-        logger.error("Use --validate-only for detailed validation report.")
-        sys.exit(1)
-    
-    # Handle dry-run mode
-    if dry_run:
-        logger.info("=== DRY RUN MODE ===")
-        logger.info("Validation passed. Execution plan:")
+        # Handle dry-run mode
+        if dry_run:
+            context.log_message("INFO", "=== DRY RUN MODE ===")
+            if not use_tui:
+                print("Validation passed. Execution plan:")
+                for pipeline in config.pipelines:
+                    print(f"Pipeline: {pipeline.name}")
+                    if isinstance(pipeline.source, DatabaseConfig):
+                        print(f"  Source: {pipeline.source.type} ({len(pipeline.source.tables)} tables)")
+                        for table in pipeline.source.tables:
+                            print(f"    - Table: {table.name} (strategy: {table.strategy.value})")
+                    else:  # FileConfig
+                        print(f"  Source: {pipeline.source.type} ({len(pipeline.source.files)} files)")
+                        for file_item in pipeline.source.files:
+                            file_name = file_item.file_path or file_item.http_path or "unknown"
+                            print(f"    - File: {file_name} (strategy: {file_item.strategy.value})")
+                    print(f"  Destination: {pipeline.destination.type}")
+                    print(f"  Workers: {pipeline.workers or DEFAULT_WORKER_COUNT}")
+                print("Dry run complete. Exiting (--dry-run mode).")
+            sys.exit(0)
+
+        if not config.pipelines:
+            context.log_message("ERROR", "No pipelines specified in the configuration.")
+            sys.exit(1)
+
+        # Log configuration options
+        if continue_on_error:
+            context.log_message("INFO", "Running in continue-on-error mode")
+        if skip_datasets:
+            context.log_message("INFO", f"Skipping datasets: {', '.join(skip_datasets)}")
+
+        # Track overall statistics
+        total_pipelines = len(config.pipelines)
+        successful_pipelines = 0
+        total_datasets = 0
+        successful_datasets = 0
+
+        # Process pipelines sequentially
         for pipeline in config.pipelines:
-            logger.info(f"Pipeline: {pipeline.name}")
-            if isinstance(pipeline.source, DatabaseConfig):
-                logger.info(f"  Source: {pipeline.source.type} ({len(pipeline.source.tables)} tables)")
-                for table in pipeline.source.tables:
-                    logger.info(f"    - Table: {table.name} (strategy: {table.strategy.value})")
-            else:  # FileConfig
-                logger.info(f"  Source: {pipeline.source.type} ({len(pipeline.source.files)} files)")
-                for file_item in pipeline.source.files:
-                    file_name = file_item.file_path or file_item.http_path or "unknown"
-                    logger.info(f"    - File: {file_name} (strategy: {file_item.strategy.value})")
-            logger.info(f"  Destination: {pipeline.destination.type}")
-            logger.info(f"  Workers: {pipeline.workers or DEFAULT_WORKER_COUNT}")
-        logger.info("Dry run complete. Exiting (--dry-run mode).")
-        sys.exit(0)
+            # Check for shutdown before starting each pipeline
+            if is_shutdown_requested():
+                context.log_message("INFO", "Processing stopped by user request")
+                break
+                
+            pipeline_success = True
 
-    if not config.pipelines:
-        logger.error("No pipelines specified in the configuration.")
-        sys.exit(1)
-
-    # Initialize error tracker
-    error_tracker = ErrorTracker()
-
-    # Log configuration options
-    if continue_on_error:
-        logger.info("Running in continue-on-error mode")
-    if skip_datasets:
-        logger.info(f"Skipping datasets: {', '.join(skip_datasets)}")
-
-    # Track overall statistics
-    total_pipelines = len(config.pipelines)
-    successful_pipelines = 0
-    total_datasets = 0
-    successful_datasets = 0
-
-    # Process pipelines sequentially
-    for pipeline in config.pipelines:
-        logger.info(f"Processing pipeline: {pipeline.name}")
-        pipeline_start = time.time()
-        pipeline_success = True
-
-        # Get worker count (pipeline-specific or global default)
-        worker_count = (
-            pipeline.workers or config.processing.workers or DEFAULT_WORKER_COUNT
-        )
-
-        # Get tables/datasets from the source configuration
-        datasets: list[TableConfig | FileItemConfig] = []
-        if hasattr(pipeline.source, "tables"):
-            datasets = getattr(pipeline.source, "tables", [])
-        elif hasattr(pipeline.source, "files"):
-            datasets = getattr(pipeline.source, "files", [])
-
-        if not datasets:
-            logger.error(
-                f"No datasets (tables or files) found in pipeline '{pipeline.name}'"
+            # Get worker count (pipeline-specific or global default)
+            worker_count = (
+                pipeline.workers or config.processing.workers or DEFAULT_WORKER_COUNT
             )
-            error_tracker.track_error(
-                pipeline=pipeline.name,
-                dataset="N/A",
-                operation="pipeline_setup",
-                exception=Exception("No datasets found in pipeline configuration"),
-                duration_seconds=time.time() - pipeline_start,
-            )
-            continue
 
-        logger.info(
-            f"Found {len(datasets)} datasets to process in pipeline '{pipeline.name}'"
-        )
-        total_datasets += len(datasets)
+            # Get tables/datasets from the source configuration
+            datasets: list[TableConfig | FileItemConfig] = []
+            if hasattr(pipeline.source, "tables"):
+                datasets = getattr(pipeline.source, "tables", [])
+            elif hasattr(pipeline.source, "files"):
+                datasets = getattr(pipeline.source, "files", [])
+                
+            # Start pipeline
+            context.pipeline_started(pipeline.name, len(datasets), worker_count)
 
-        # Track datasets for this pipeline
-        pipeline_dataset_success = 0
+            if not datasets:
+                context.pipeline_completed(
+                    pipeline.name, 
+                    success=False, 
+                    error_message="No datasets found in configuration"
+                )
+                continue
 
-        # Filter out skipped datasets
-        datasets_to_process = []
-        for dataset in datasets:
-            if dataset.name in skip_datasets:
-                logger.info(f"Skipping dataset '{dataset.name}' as requested")
-            else:
-                datasets_to_process.append(dataset)
+            context.log_message("INFO", f"Found {len(datasets)} datasets to process in pipeline '{pipeline.name}'")
+            total_datasets += len(datasets)
 
-        if not datasets_to_process:
-            logger.info(f"All datasets in pipeline '{pipeline.name}' were skipped")
-            continue
+            # Track datasets for this pipeline
+            pipeline_dataset_success = 0
 
-        # Process datasets in parallel within the pipeline
-        with ThreadPoolExecutor(max_workers=worker_count) as executor:
-            futures = {
-                executor.submit(
-                    process_table,
-                    pipeline.source,
-                    pipeline.destination,
-                    dataset,
-                    pipeline.name,
-                    error_tracker,
-                ): dataset
-                for dataset in datasets_to_process
-            }
-            for future in as_completed(futures):
-                dataset = futures[future]
-                try:
-                    success = future.result()
-                    if success:
-                        pipeline_dataset_success += 1
-                        successful_datasets += 1
-                        logger.info(
-                            f"Completed processing dataset '{dataset.name}' in pipeline '{pipeline.name}'"
-                        )
-                    else:
+            # Filter out skipped datasets
+            datasets_to_process = []
+            for dataset in datasets:
+                if dataset.name in skip_datasets:
+                    context.dataset_skipped(pipeline.name, dataset.name, "Skipped as requested")
+                else:
+                    datasets_to_process.append(dataset)
+
+            if not datasets_to_process:
+                context.pipeline_completed(pipeline.name, success=True)
+                continue
+
+            # Process datasets in parallel within the pipeline
+            context.update_workers(worker_count)
+            
+            with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                futures = {
+                    executor.submit(
+                        process_table,
+                        pipeline.source,
+                        pipeline.destination,
+                        dataset,
+                        pipeline.name,
+                        context,
+                    ): dataset
+                    for dataset in datasets_to_process
+                }
+                for future in as_completed(futures):
+                    dataset = futures[future]
+                    try:
+                        success = future.result()
+                        if success:
+                            pipeline_dataset_success += 1
+                            successful_datasets += 1
+                        else:
+                            pipeline_success = False
+                    except Exception as e:
                         pipeline_success = False
-                except Exception as e:
-                    pipeline_success = False
-                    logger.error(
-                        f"Error processing dataset '{dataset.name}' in pipeline '{pipeline.name}': {e}"
-                    )
-                    if not continue_on_error:
-                        logger.error(
-                            "Stopping execution due to error (use --continue-on-error to proceed)"
-                        )
-                        # Finalize report and exit
-                        error_tracker.finalize_report(
-                            total_pipelines=total_pipelines,
-                            successful_pipelines=successful_pipelines,
-                            total_datasets=total_datasets,
-                            successful_datasets=successful_datasets,
-                        )
-                        logger.info("\n" + error_tracker.report.get_summary())
-                        if error_tracker.report.errors:
-                            error_report_path = Path("extral_error_report.json")
-                            error_tracker.report.save_to_file(error_report_path)
-                            logger.info(f"Error report saved to: {error_report_path}")
-                        sys.exit(1)
+                        context.log_message("ERROR", f"Error processing dataset '{dataset.name}' in pipeline '{pipeline.name}': {e}")
+                        if not continue_on_error:
+                            context.log_message("ERROR", "Stopping execution due to error (use --continue-on-error to proceed)")
+                            # Show final summary
+                            print("\n" + context.get_stats_summary())
+                            context.save_stats_report("extral_error_report.json")
+                            context.log_message("INFO", "Error report saved to: extral_error_report.json")
+                            sys.exit(1)
+                    
+                    # Check for shutdown after each completed task
+                    if is_shutdown_requested():
+                        context.log_message("INFO", "Shutdown requested - cancelling remaining tasks")
+                        
+                        # Show waiting message for remaining tasks
+                        remaining_tasks = sum(1 for f in futures if not f.done())
+                        if remaining_tasks > 0:
+                            if use_tui:
+                                # Print to stderr to avoid interfering with TUI on stdout
+                                print(f"\nShutting down - waiting for {remaining_tasks} remaining task(s) to complete...", file=sys.stderr)
+                                print("Tasks are being cancelled gracefully. Press Ctrl+C to force quit.", file=sys.stderr)
+                            else:
+                                context.log_message("INFO", f"Waiting for {remaining_tasks} remaining task(s) to complete...")
+                        
+                        # Cancel remaining futures
+                        for remaining_future in futures:
+                            if not remaining_future.done():
+                                remaining_future.cancel()
+                        break
 
-        if pipeline_success and pipeline_dataset_success == len(datasets_to_process):
-            successful_pipelines += 1
-            logger.info(f"Successfully completed pipeline: {pipeline.name}")
-        else:
-            logger.warning(
-                f"Pipeline '{pipeline.name}' completed with errors. "
-                f"Successful datasets: {pipeline_dataset_success}/{len(datasets_to_process)}"
+            # Update worker count and pipeline completion
+            context.update_workers(0)
+            
+            # Complete pipeline
+            pipeline_complete_success = pipeline_success and pipeline_dataset_success == len(datasets_to_process)
+            pipeline_error = None
+            if not pipeline_complete_success:
+                failed_count = len(datasets_to_process) - pipeline_dataset_success
+                pipeline_error = f"{failed_count} dataset(s) failed"
+                
+            context.pipeline_completed(
+                pipeline.name,
+                success=pipeline_complete_success,
+                successful_datasets=pipeline_dataset_success,
+                failed_datasets=len(datasets_to_process) - pipeline_dataset_success,
+                error_message=pipeline_error
             )
+            
+            if pipeline_complete_success:
+                successful_pipelines += 1
 
-    # Finalize error report
-    error_tracker.finalize_report(
-        total_pipelines=total_pipelines,
-        successful_pipelines=successful_pipelines,
-        total_datasets=total_datasets,
-        successful_datasets=successful_datasets,
-    )
+        # Display final summary
+        summary = context.get_stats_summary()
+        context.log_message("INFO", "Execution completed")
+        if not use_tui:
+            print("\n" + summary)
 
-    # Display error summary
-    logger.info("\n" + error_tracker.report.get_summary())
+        # Save detailed report
+        context.save_stats_report("extral_execution_report.json")
+        context.log_message("INFO", "Detailed report saved to: extral_execution_report.json")
 
-    # Save error report if there were errors
-    if error_tracker.report.errors:
-        error_report_path = Path("extral_error_report.json")
-        error_tracker.report.save_to_file(error_report_path)
-        logger.info(f"Error report saved to: {error_report_path}")
+        # Store state
+        state.store_state()
 
-    # Store state
-    state.store_state()
-
-    # Exit with error code if there were failures
-    if (
-        error_tracker.report.failed_pipelines > 0
-        or error_tracker.report.failed_datasets > 0
-    ):
-        sys.exit(1)
+        # Exit with error code if there were failures
+        failed_pipelines = total_pipelines - successful_pipelines
+        failed_datasets = total_datasets - successful_datasets
+        if failed_pipelines > 0 or failed_datasets > 0:
+            sys.exit(1)
+            
+    finally:
+        # Always stop the context
+        context.stop()
 
 
 if __name__ == "__main__":

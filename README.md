@@ -12,6 +12,42 @@ Supported Connectors:
   Both source and destination
 
 
+## Testing
+
+Extral uses pytest for testing with both unit and integration tests.
+
+### Running Tests
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run only unit tests (fast, no external dependencies)
+uv run pytest -m unit
+
+# Run only integration tests (requires external services)
+uv run pytest -m integration
+
+# Run tests with coverage report
+uv run pytest --cov=src/extral --cov-report=html
+
+# Run tests in verbose mode
+uv run pytest -v
+
+# Run specific test file
+uv run pytest tests/unit/test_config.py
+```
+
+### Test Categories
+
+Tests are organized using markers:
+- `unit`: Fast tests that don't require external dependencies
+- `integration`: Tests requiring external services (databases, files)
+- `database`: Tests requiring database connections
+- `file`: Tests requiring file system access
+- `slow`: Tests that take longer to run
+- `network`: Tests requiring network access
+
 ## License
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 

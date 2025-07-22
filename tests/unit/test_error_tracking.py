@@ -26,6 +26,7 @@ from extral.error_tracking import ErrorDetails, ErrorReport, ErrorTracker
 from extral.exceptions import ExtractException, LoadException, ConnectionException
 
 
+@pytest.mark.unit
 class TestErrorDetails:
     """Test ErrorDetails dataclass."""
     
@@ -67,6 +68,7 @@ class TestErrorDetails:
         assert error_details.stack_trace is None
 
 
+@pytest.mark.unit
 class TestErrorReport:
     """Test ErrorReport dataclass."""
     
@@ -173,6 +175,7 @@ class TestErrorReport:
         assert len(errors_by_pipeline["pipeline2"]) == 1
 
 
+@pytest.mark.unit
 class TestErrorTracker:
     """Test ErrorTracker class."""
     

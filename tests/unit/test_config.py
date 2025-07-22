@@ -30,6 +30,7 @@ from extral.config import (
 )
 
 
+@pytest.mark.unit
 class TestLoadStrategy:
     """Test LoadStrategy enum."""
     
@@ -40,6 +41,7 @@ class TestLoadStrategy:
         assert LoadStrategy.MERGE.value == "merge"
 
 
+@pytest.mark.unit
 class TestReplaceMethod:
     """Test ReplaceMethod enum."""
     
@@ -49,6 +51,7 @@ class TestReplaceMethod:
         assert ReplaceMethod.RECREATE.value == "recreate"
 
 
+@pytest.mark.unit
 class TestTableConfig:
     """Test TableConfig dataclass."""
     
@@ -92,6 +95,7 @@ class TestTableConfig:
         assert table_config.batch_size == 500
 
 
+@pytest.mark.unit
 class TestFileItemConfig:
     """Test FileItemConfig dataclass."""
     
@@ -125,6 +129,7 @@ class TestFileItemConfig:
         assert file_config.strategy == LoadStrategy.REPLACE
 
 
+@pytest.mark.unit
 class TestDatabaseConfig:
     """Test DatabaseConfig dataclass."""
     
@@ -170,6 +175,7 @@ class TestDatabaseConfig:
         assert db_config.tables[1].name == "orders"
 
 
+@pytest.mark.unit
 class TestFileConfig:
     """Test FileConfig dataclass."""
     
@@ -188,6 +194,7 @@ class TestFileConfig:
         assert file_config.files[1].name == "file2"
 
 
+@pytest.mark.unit
 class TestPipelineConfig:
     """Test PipelineConfig dataclass."""
     
@@ -234,6 +241,7 @@ class TestPipelineConfig:
         assert pipeline_config.workers is None
 
 
+@pytest.mark.unit
 class TestConfig:
     """Test Config dataclass."""
     

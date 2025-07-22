@@ -30,6 +30,7 @@ from extral.exceptions import (
 )
 
 
+@pytest.mark.unit
 class TestExtralException:
     """Test ExtralException base class."""
     
@@ -89,6 +90,7 @@ class TestExtralException:
         assert str(exception) == "[operation=extract] Error occurred"
 
 
+@pytest.mark.unit
 class TestExtractException:
     """Test ExtractException class."""
     
@@ -116,6 +118,7 @@ class TestExtractException:
         assert exception.details["records_processed"] == 500
 
 
+@pytest.mark.unit
 class TestLoadException:
     """Test LoadException class."""
     
@@ -143,6 +146,7 @@ class TestLoadException:
         assert exception.details["merge_key"] == "id"
 
 
+@pytest.mark.unit
 class TestConnectionException:
     """Test ConnectionException class."""
     
@@ -175,6 +179,7 @@ class TestConnectionException:
         assert exception.details["error_code"] == 2003
 
 
+@pytest.mark.unit
 class TestConfigurationException:
     """Test ConfigurationException class."""
     
@@ -199,6 +204,7 @@ class TestConfigurationException:
         assert exception.details["expected"] == "positive integer"
 
 
+@pytest.mark.unit
 class TestStateException:
     """Test StateException class."""
     
@@ -224,6 +230,7 @@ class TestStateException:
         assert exception.details["error"] == "Permission denied"
 
 
+@pytest.mark.unit
 class TestValidationException:
     """Test ValidationException class."""
     
@@ -249,6 +256,7 @@ class TestValidationException:
         assert exception.details["endpoint"] == "mysql://localhost:3306"
 
 
+@pytest.mark.unit
 class TestRetryableException:
     """Test RetryableException class."""
     
@@ -297,6 +305,7 @@ class TestRetryableException:
         assert exception.details["query"] == "SELECT * FROM users"
 
 
+@pytest.mark.unit
 class TestExceptionChaining:
     """Test exception chaining and context preservation."""
     

@@ -30,6 +30,7 @@ from extral.main import run
 from extral.validation import PipelineValidator
 
 
+@pytest.mark.integration
 class TestMultiPipelineConfigurations:
     """Test various multi-pipeline configuration scenarios."""
 

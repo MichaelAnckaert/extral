@@ -38,6 +38,7 @@ from extral.config import (
 from extral.exceptions import ValidationException, ConnectionException
 
 
+@pytest.mark.unit
 class TestValidationResult:
     """Test ValidationResult dataclass."""
     
@@ -64,6 +65,7 @@ class TestValidationResult:
         assert result.details == {"key": "value"}
 
 
+@pytest.mark.unit
 class TestPipelineValidationResult:
     """Test PipelineValidationResult dataclass."""
     
@@ -114,6 +116,7 @@ class TestPipelineValidationResult:
         assert result.overall_valid is False
 
 
+@pytest.mark.unit
 class TestValidationReport:
     """Test ValidationReport dataclass."""
     
@@ -183,6 +186,7 @@ class TestValidationReport:
         assert report.summary["failed_pipelines"] == 1
 
 
+@pytest.mark.unit
 class TestPipelineValidator:
     """Test PipelineValidator class."""
     
@@ -488,6 +492,7 @@ class TestPipelineValidator:
         assert "Invalid batch size" in result.error_message
 
 
+@pytest.mark.unit
 class TestFormatValidationReport:
     """Test format_validation_report function."""
     

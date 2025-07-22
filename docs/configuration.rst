@@ -22,7 +22,7 @@ Extral uses a **multi-pipeline configuration format** that allows you to define 
    # Global settings
    logging:
      level: info
-     mode: console  # or tui
+     mode: console  # console (default) or tui
 
    processing:
      workers: 4
@@ -64,7 +64,7 @@ Controls the logging behavior of Extral.
 **Options:**
 
 * ``level`` (string, default: "info") - Log level for the application
-* ``mode`` (string, default: "console") - Display mode: "console" for standard terminal output, "tui" for interactive Text User Interface
+* ``mode`` (string, default: "console") - Display mode: "console" for standard terminal output, "tui" for interactive Text User Interface with real-time progress monitoring
 
 Processing Configuration
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -145,75 +145,82 @@ File Connectors
 
 File connectors support CSV and JSON files from local filesystem or HTTP/HTTPS URLs. File sources can only be used as sources, not destinations.
 
-**Basic File Source Configuration:**
+.. note::
+   The connector type must be format-specific: either "csv" or "json". There is no generic "file" type - you must specify the exact format you're working with.
+
+**CSV File Source Configuration:**
 
 .. code-block:: yaml
 
    source:
-     type: file
+     type: csv
      files:
        - name: customers_data
-         format: csv  # or json
          file_path: /path/to/customers.csv
+         options:
+           delimiter: ","
+           encoding: utf-8
          strategy: replace
-         batch_size: 10000
-       - name: orders_data
-         format: json
-         http_path: https://api.example.com/orders.json
-         strategy: merge
-         merge_key: order_id
 
-**CSV File Configuration:**
+**Multiple CSV Files:**
 
 .. code-block:: yaml
 
    source:
-     type: file
+     type: csv
      files:
        - name: customer_data
-         format: csv
          file_path: /data/customers.csv
          options:
            delimiter: ","          # Field delimiter
            quotechar: "\""         # Quote character  
            encoding: utf-8         # File encoding
-           header: true           # First row contains headers
-           skip_rows: 0           # Number of rows to skip at start
+           header: true            # First row contains headers
+           skip_rows: 0            # Number of rows to skip at start
          strategy: merge
          merge_key: customer_id
          batch_size: 5000
+       - name: orders_data
+         file_path: /data/orders.csv
+         strategy: replace
+         table: orders  # Optional: specify destination table name
 
-**JSON File Configuration:**
+**JSON File Source Configuration:**
 
 .. code-block:: yaml
 
    source:
-     type: file  
+     type: json
      files:
        - name: product_catalog
-         format: json
          http_path: https://api.example.com/products.json
          options:
            json_lines: false      # true for JSONL format, false for JSON array
            encoding: utf-8        # File encoding
          strategy: replace
          batch_size: 1000
+       - name: inventory_data
+         file_path: /data/inventory.json
+         options:
+           json_lines: true       # JSONL format
+         strategy: merge
+         merge_key: product_id
 
 **File Connector Options:**
 
-* ``type`` (string, required) - Must be "file"
+* ``type`` (string, required) - "csv" or "json"
 * ``files`` (array, required) - List of file configurations
 
 **File Item Options:**
 
 * ``name`` (string, required) - Logical name for the dataset (like table name)
-* ``format`` (string, required) - "csv" or "json"
 * ``file_path`` (string) - Local file path (either this or http_path required)
 * ``http_path`` (string) - HTTP/HTTPS URL (either this or file_path required)
 * ``options`` (object, optional) - Format-specific parsing options
 * ``strategy`` (string, optional) - Load strategy: "append", "replace", "merge" (default: "replace")
 * ``merge_key`` (string) - Required if strategy is "merge"
 * ``batch_size`` (integer, optional) - Number of records to process per batch (default: 50000)
+* ``table`` (string, optional) - Destination table name (defaults to the ``name`` field if not specified)
 
 **CSV Options:**
 
@@ -320,6 +327,43 @@ Incremental loading processes only new or updated records based on a cursor fiel
 * ``type`` (string, required) - Data type: "datetime", "integer", "string"
 * ``initial_value`` (string, optional) - Starting value for first extraction
 
+Running Extral
+--------------
+
+Command Line Options
+~~~~~~~~~~~~~~~~~~~~~
+
+Extral can be executed with various command line options:
+
+.. code-block:: bash
+
+   # Run with standard console output
+   extral --config config.yaml
+
+   # Run with interactive TUI interface
+   extral --config config.yaml --tui
+
+   # Run specific pipeline by name
+   extral --config config.yaml --pipeline my_pipeline
+
+   # Enable debug logging
+   extral --config config.yaml --debug
+
+**Command Line Options:**
+
+* ``--config`` (required) - Path to YAML configuration file
+* ``--tui`` (optional) - Enable interactive Text User Interface with real-time progress monitoring
+* ``--pipeline`` (optional) - Run specific pipeline by name (default: runs all pipelines)
+* ``--debug`` (optional) - Enable debug-level logging output
+
+.. note::
+   The TUI mode provides an interactive interface with:
+   
+   * Real-time progress bars for each table/file being processed
+   * Live statistics including records processed, transfer rates, and elapsed time
+   * Error tracking with detailed failure information
+   * Pipeline status monitoring across multiple concurrent operations
+
 Complete Example
 ----------------
 
@@ -371,17 +415,39 @@ Here's a complete configuration file example:
 
      - name: csv_to_postgres
        source:
-         type: file
+         type: csv
          files:
            - name: customer_updates
-             format: csv
              file_path: /data/customer_updates.csv
              options:
                delimiter: ","
                quotechar: "\""
                encoding: utf-8
+               header: true
              strategy: merge
              merge_key: customer_id
+             batch_size: 5000
+
+       destination:
+         type: postgresql
+         host: postgres.example.com
+         port: 5432
+         user: loader
+         password: secret456
+         database: warehouse
+         schema: staging
+         
+     - name: json_to_postgres  
+       source:
+         type: json
+         files:
+           - name: api_data
+             http_path: https://api.example.com/data.json
+             options:
+               json_lines: false
+               encoding: utf-8
+             strategy: replace
+             batch_size: 1000
 
        destination:
          type: postgresql

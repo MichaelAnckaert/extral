@@ -82,8 +82,8 @@ def extract_schema_from_source(
     db_inferred_schema: TargetDatabaseSchema = {"schema_source": source_type, "schema": {}}
     for column in schema:
         column_name = column["Field"]
-        column_type = column["Type"]
-        is_nullable = column["Null"] == "YES"
+        column_type = column["type"]  # Changed from "Type" to match new connector
+        is_nullable = column.get("nullable", column.get("Null") == "YES")
         db_inferred_schema["schema"][column_name] = {
             "type": column_type,
             "nullable": is_nullable,

@@ -74,7 +74,8 @@ class Statistics:
 class TUIHandler(EventHandler):
     """Handler that displays events in an ncurses TUI interface."""
     
-    def __init__(self):
+    def __init__(self, level: str = "INFO"):
+        self.level = getattr(logging, level.upper(), logging.INFO)
         self.pipelines: Dict[str, PipelineStatus] = {}
         self.statistics = Statistics()
         self.log_entries: deque[Tuple[str, str, str]] = deque(maxlen=100)
@@ -266,11 +267,21 @@ class TUIHandler(EventHandler):
             
     def _handle_log_message(self, event: Event) -> None:
         """Handle log message event."""
+        # Check if message level meets the configured threshold
+        message_level = self._get_log_level(event)
+        if message_level < self.level:
+            return
+            
         timestamp = event.timestamp.strftime("%H:%M:%S")
         level = event.data.get("level", "INFO")
         message = event.message or ""
         self.log_entries.append((timestamp, level, message))
         self.dirty_logs = True
+        
+    def _get_log_level(self, event: Event) -> int:
+        """Get log level from LOG_MESSAGE event."""
+        level_str = event.data.get("level", "INFO").upper()
+        return getattr(logging, level_str, logging.INFO)
         
     def _handle_worker_update(self, event: Event) -> None:
         """Handle worker update event."""

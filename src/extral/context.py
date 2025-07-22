@@ -45,7 +45,8 @@ class ApplicationContext:
         self.event_bus.register_handler(self.stats_handler)
         
         if self.use_tui:
-            self.tui_handler = TUIHandler()
+            level = config.logging.level.upper()
+            self.tui_handler = TUIHandler(level=level)
             self.tui_handler.set_context(self)
             self.event_bus.register_handler(self.tui_handler)
         else:
@@ -306,9 +307,12 @@ class ApplicationContext:
         timestamp = self._start_time.strftime("%Y%m%d_%H%M%S")
         log_file = log_dir / f"extral_{timestamp}.log"
         
+        # Get configured logging level
+        configured_level = getattr(logging, self.config.logging.level.upper(), logging.INFO)
+        
         # Configure file handler
         file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(logging.DEBUG)
+        file_handler.setLevel(configured_level)
         
         # Create formatter
         formatter = logging.Formatter(
@@ -336,7 +340,7 @@ class ApplicationContext:
         
         # Add only the file handler
         root_logger.addHandler(file_handler)
-        root_logger.setLevel(logging.DEBUG)
+        root_logger.setLevel(configured_level)
         
         # Store log file path for reference
         self.log_file_path = str(log_file)

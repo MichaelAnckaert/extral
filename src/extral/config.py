@@ -45,14 +45,6 @@ class ExtractConfig:
     last_value: Optional[Union[str, int]] = None
     batch_size: Optional[int] = None
 
-    def to_dict(self) -> dict[str, Optional[Union[str, int]]]:
-        """Convert to dictionary format for backward compatibility."""
-        return {
-            "extract_type": self.extract_type,
-            "incremental_field": self.incremental_field,
-            "last_value": self.last_value,
-            "batch_size": self.batch_size,
-        }
 
 
 @dataclass
@@ -69,14 +61,14 @@ class LoadConfig:
 class LoggingConfig:
     """Configuration for logging."""
 
-    level: str = "WARNING"
+    level: str = "INFO"
     mode: str = "standard"  # "standard" or "tui"
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "LoggingConfig":
         """Create LoggingConfig from dictionary."""
         return cls(
-            level=data.get("level", "WARNING"),
+            level=data.get("level", "INFO"),
             mode=data.get("mode", "standard")
         )
 

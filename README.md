@@ -4,7 +4,9 @@
 [![Code Quality Checks](https://github.com/MichaelAnckaert/extral/actions/workflows/workflow.yml/badge.svg)](https://github.com/MichaelAnckaert/extral/actions/workflows/workflow.yml)
 [![Documenation](https://app.readthedocs.org/projects/extral/badge/?version=latest)](https://extral.readthedocs.io/en/latest/)
 
-Extral is a versatile ETL (**Ex**tract, **Tra**nsform, **L**oad) application designed to move data from a *source* database to a *destination* database. 
+Extral is a versatile data migration application designed to efficiently **Extract** data from various sources, store it with intermediate processing, and **Load** it into destinations using an Extract-Store-Load pattern with fault tolerance and parallel processing capabilities.
+
+> **Note**: Extral follows an Extract-Load (EL) workflow with intermediate storage. Data transformation capabilities are planned for future releases. 
 
 All information including a Getting Started Guide can be found in the [User Documentation](https://extral.readthedocs.io/en/latest/).
 

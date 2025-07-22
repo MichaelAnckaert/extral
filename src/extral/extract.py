@@ -20,6 +20,7 @@ from extral.config import ExtractConfig, TableConfig, FileItemConfig, ConnectorC
 from extral.connectors import MySQLConnector, PostgreSQLConnector
 from extral.connectors.file import CSVConnector, JSONConnector
 from extral.database import DatabaseRecord
+from extral.exceptions import ExtractException, ConnectionException
 from extral.schema import (
     SchemaCreateException,
     TargetDatabaseSchema,
@@ -283,6 +284,23 @@ def extract_table(
 
         logger.info(f"Extraction finished for dataset '{dataset_name}'")
         return file_path, schema_path
+    except ConnectionException:
+        # Re-raise connection exceptions with enhanced context
+        raise
+    except SchemaCreateException as e:
+        # Convert schema creation exceptions to extract exceptions
+        raise ExtractException(
+            f"Failed to extract or create schema: {str(e)}",
+            pipeline=pipeline_name,
+            dataset=dataset_name,
+            operation="schema_extraction"
+        ) from e
     except Exception as e:
         logger.error("Error processing dataset '%s': %s", dataset_name, e)
-        raise e
+        # Wrap generic exceptions with context
+        raise ExtractException(
+            f"Extraction failed: {str(e)}",
+            pipeline=pipeline_name,
+            dataset=dataset_name,
+            operation="extract"
+        ) from e

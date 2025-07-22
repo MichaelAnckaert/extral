@@ -1,0 +1,24 @@
+{
+  "start_time": "2025-07-22T08:20:52.605377",
+  "end_time": "2025-07-22T08:20:52.614534",
+  "total_pipelines": 2,
+  "successful_pipelines": 1,
+  "failed_pipelines": 1,
+  "total_datasets": 2,
+  "successful_datasets": 1,
+  "failed_datasets": 1,
+  "errors": [
+    {
+      "pipeline": "office_pipeline",
+      "dataset": "offices",
+      "operation": "extract",
+      "error_type": "ExtractException",
+      "error_message": "[pipeline=office_pipeline, dataset=offices, operation=extract] Extraction failed: 'Type'",
+      "timestamp": "2025-07-22T08:20:52.614049",
+      "duration_seconds": 0.002693653106689453,
+      "records_processed": null,
+      "retry_count": 0,
+      "stack_trace": "Traceback (most recent call last):\n  File \"/home/michael/projects/extral/src/extral/extract.py\", line 267, in extract_table\n    schema = extract_schema_from_source(source_config, dataset_name)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/michael/projects/extral/src/extral/extract.py\", line 85, in extract_schema_from_source\n    column_type = column[\"Type\"]\n                  ~~~~~~^^^^^^^^\nKeyError: 'Type'\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/michael/projects/extral/src/extral/main.py\", line 49, in process_table\n    file_path, schema_path = extract_table(source_config, dataset_config, pipeline_name)\n                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/michael/projects/extral/src/extral/extract.py\", line 301, in extract_table\n    raise ExtractException(\nextral.exceptions.ExtractException: [pipeline=office_pipeline, dataset=offices, operation=extract] Extraction failed: 'Type'\n"
+    }
+  ]
+}

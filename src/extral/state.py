@@ -40,22 +40,26 @@ class State:
     def __init__(self) -> None:
         self.pipelines: dict[str, PipelineState] = dict()
 
-    def get_dataset_state(self, pipeline_name: str, dataset_id: str) -> Optional[DatasetState]:
+    def get_dataset_state(
+        self, pipeline_name: str, dataset_id: str
+    ) -> Optional[DatasetState]:
         """Get the state for a specific dataset in a specific pipeline.
-        
+
         Args:
             pipeline_name: Name of the pipeline
             dataset_id: Identifier for the dataset (table name or file name/logical name)
         """
         if pipeline_name not in self.pipelines:
             return None
-        
+
         pipeline_state = self.pipelines[pipeline_name]
         return pipeline_state.get("datasets", {}).get(dataset_id)
 
-    def set_dataset_state(self, pipeline_name: str, dataset_id: str, dataset_state: DatasetState) -> None:
+    def set_dataset_state(
+        self, pipeline_name: str, dataset_id: str, dataset_state: DatasetState
+    ) -> None:
         """Set the state for a specific dataset in a specific pipeline.
-        
+
         Args:
             pipeline_name: Name of the pipeline
             dataset_id: Identifier for the dataset (table name or file name/logical name)
@@ -63,10 +67,10 @@ class State:
         """
         if pipeline_name not in self.pipelines:
             self.pipelines[pipeline_name] = {"datasets": {}}
-        
+
         if "datasets" not in self.pipelines[pipeline_name]:
             self.pipelines[pipeline_name]["datasets"] = {}
-        
+
         self.pipelines[pipeline_name]["datasets"][dataset_id] = dataset_state
 
     def get_pipeline_state(self, pipeline_name: str) -> Optional[PipelineState]:
@@ -81,7 +85,7 @@ class State:
         """List all dataset IDs for a specific pipeline."""
         if pipeline_name not in self.pipelines:
             return []
-        
+
         pipeline_state = self.pipelines[pipeline_name]
         return list(pipeline_state.get("datasets", {}).keys())
 
@@ -94,7 +98,10 @@ class State:
                 f".state-backup-{datetime.now().isoformat()}.json", "w"
             ) as backup_file:
                 json.dump(
-                    {"pipelines": self.pipelines}, backup_file, indent=4, cls=CustomEncoder
+                    {"pipelines": self.pipelines},
+                    backup_file,
+                    indent=4,
+                    cls=CustomEncoder,
                 )
             logger.debug("State backup created successfully.")
         except Exception as e:
@@ -102,7 +109,9 @@ class State:
 
         # Store the current state
         with open("state.json", "w") as state_file:
-            json.dump({"pipelines": self.pipelines}, state_file, indent=4, cls=CustomEncoder)
+            json.dump(
+                {"pipelines": self.pipelines}, state_file, indent=4, cls=CustomEncoder
+            )
             logger.debug("State stored successfully.")
 
     def load_state(self):

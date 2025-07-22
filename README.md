@@ -48,6 +48,41 @@ Tests are organized using markers:
 - `slow`: Tests that take longer to run
 - `network`: Tests requiring network access
 
+## Documentation
+
+Extral includes comprehensive Sphinx documentation covering installation, configuration, and API reference.
+
+### Building Documentation
+
+To build the documentation locally:
+
+```bash
+# Install development dependencies (includes Sphinx)
+uv sync --group dev
+
+# Build HTML documentation
+cd docs && make html
+
+# Or use the convenience script
+./docs/build_docs.sh
+```
+
+The built documentation will be available at `docs/_build/html/index.html`.
+
+### Documentation Structure
+
+- **Getting Started** - Installation and basic usage guide
+- **Configuration** - Complete YAML configuration syntax reference  
+- **API Reference** - Auto-generated API documentation for all modules
+
+### Updating Documentation
+
+- **Content**: Edit the `.rst` files in the `docs/` directory
+- **API docs**: Automatically generated from docstrings in the source code
+- **Version**: Automatically synced from `src/extral/__init__.py`
+
+After making changes, rebuild the documentation using the commands above.
+
 ## License
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 

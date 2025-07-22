@@ -2,6 +2,7 @@
 
 [![PyPI version](https://badge.fury.io/py/Extral.svg)](https://badge.fury.io/py/Extral)
 [![Code Quality Checks](https://github.com/MichaelAnckaert/extral/actions/workflows/workflow.yml/badge.svg)](https://github.com/MichaelAnckaert/extral/actions/workflows/workflow.yml)
+[![Documenation](https://app.readthedocs.org/projects/extral/badge/?version=latest)]
 
 Extral is a versatile ETL (**Ex**tract, **Tra**nsform, **L**oad) application designed to move data from a *source* database to a *destination* database. 
 

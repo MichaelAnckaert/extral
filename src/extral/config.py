@@ -127,7 +127,6 @@ class FileItemConfig:
     """Configuration for a single file item."""
 
     name: str  # Logical name for the file (like table name)
-    format: str  # "csv", "json"
     file_path: Optional[str] = None
     http_path: Optional[str] = None
     options: Dict[str, Any] = field(default_factory=dict)
@@ -150,7 +149,6 @@ class FileItemConfig:
 
         return cls(
             name=data["name"],
-            format=data.get("format", "csv"),  # Default to CSV if not specified
             file_path=data.get("file_path"),
             http_path=data.get("http_path"),
             options=data.get("options", {}),

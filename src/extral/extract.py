@@ -68,7 +68,7 @@ def extract_schema_from_source(
             raise SchemaCreateException(
                 f"Could not extract schema for table '{table_name}' from PostgreSQL source"
             )
-    elif source_type == "file":
+    elif source_type in ["csv", "json"]:
         # For file connectors, find the specific file configuration
         if not hasattr(source_config, "files"):
             raise ValueError("File source config must have files attribute")
@@ -85,21 +85,21 @@ def extract_schema_from_source(
         if not file_item_config:
             raise ValueError(f"No file configuration found for dataset '{table_name}'")
 
-        # Create connector based on file format
+        # Create connector based on source type
         connector: Connector
-        if file_item_config.format == "csv":
+        if source_type == "csv":
             connector = CSVConnector(file_item_config)
-        elif file_item_config.format == "json":
+        elif source_type == "json":
             connector = JSONConnector(file_item_config)
         else:
-            raise ValueError(f"Unsupported file format: {file_item_config.format}")
+            raise ValueError(f"Unsupported file format: {source_type}")
 
         # Infer schema from file
         schema_dict = connector.infer_schema(table_name)
 
         # Convert to TargetDatabaseSchema format
         inferred_schema: TargetDatabaseSchema = {
-            "schema_source": f"file_{file_item_config.format}",
+            "schema_source": f"file_{source_type}",
             "schema": schema_dict,
         }
         return inferred_schema
@@ -144,16 +144,16 @@ def _extract_data(
         connector = PostgreSQLConnector()
         connector.connect(cast(DatabaseConfig, source_config))
         return connector.extract_data(dataset_name, extract_config)
-    elif source_type == "file":
+    elif source_type in ["csv", "json"]:
         # For file connectors, use the dataset_config which contains file-specific info
         if not isinstance(dataset_config, FileItemConfig):
             raise ValueError("File source requires FileItemConfig")
-        if dataset_config.format == "csv":
+        if source_type == "csv":
             connector = CSVConnector(dataset_config)
-        elif dataset_config.format == "json":
+        elif source_type == "json":
             connector = JSONConnector(dataset_config)
         else:
-            raise ValueError(f"Unsupported file format: {dataset_config.format}")
+            raise ValueError(f"Unsupported file format: {source_type}")
 
         return connector.extract_data(dataset_name, extract_config)
     else:

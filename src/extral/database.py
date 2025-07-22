@@ -158,6 +158,10 @@ class DatabaseTypeTranslator:
             return self._mysql_to_postgresql(type_str)
         elif from_db == "postgresql" and to_db == "mysql":
             return self._postgresql_to_mysql(type_str)
+        elif from_db.startswith("file_") and to_db == "postgresql":
+            return self._generic_to_postgresql(type_str)
+        elif from_db.startswith("file_") and to_db == "mysql":
+            return self._generic_to_mysql(type_str)
         else:
             raise ValueError(f"Unsupported database combination: {from_db} to {to_db}")
 
@@ -241,6 +245,57 @@ class DatabaseTypeTranslator:
 
         # Direct mapping
         return self.pg_to_mysql.get(type_str, type_str)
+
+    def _generic_to_postgresql(self, type_str: str) -> str:
+        """Convert generic file types to PostgreSQL"""
+        type_str = type_str.strip().lower()
+        
+        # Handle VARCHAR types
+        if type_str.startswith("varchar"):
+            return type_str  # VARCHAR is valid in PostgreSQL
+        
+        # Map common generic types to PostgreSQL equivalents
+        generic_to_pg = {
+            "string": "text",
+            "integer": "integer",
+            "int": "integer", 
+            "bigint": "bigint",
+            "float": "real",
+            "double": "double precision",
+            "decimal": "decimal",
+            "boolean": "boolean",
+            "date": "date",
+            "datetime": "timestamp",
+            "timestamp": "timestamp",
+            "text": "text",
+        }
+        
+        return generic_to_pg.get(type_str, type_str)
+
+    def _generic_to_mysql(self, type_str: str) -> str:
+        """Convert generic file types to MySQL"""
+        type_str = type_str.strip().lower()
+        
+        # Handle VARCHAR types  
+        if type_str.startswith("varchar"):
+            return type_str  # VARCHAR is valid in MySQL
+            
+        # Map common generic types to MySQL equivalents
+        generic_to_mysql = {
+            "string": "text",
+            "integer": "int",
+            "bigint": "bigint", 
+            "float": "float",
+            "double": "double",
+            "decimal": "decimal",
+            "boolean": "tinyint(1)",
+            "date": "date",
+            "datetime": "datetime", 
+            "timestamp": "timestamp",
+            "text": "text",
+        }
+        
+        return generic_to_mysql.get(type_str, type_str)
 
     def get_supported_types(self, database: str) -> Dict[str, str]:
         """Get all supported types for a database"""

@@ -41,12 +41,12 @@ def _create_target_database_schema(
     destination_config: ConnectorConfig, schema: DatabaseSchema
 ) -> TargetDatabaseSchema:
     destination_type = destination_config.type
-    if destination_type not in ["mysql", "postgresql", "file"]:
+    if destination_type not in ["mysql", "postgresql", "csv", "json"]:
         logger.error("Unsupported destination type: %s", destination_type)
         raise ValueError(f"Unsupported destination type: {destination_type}")
 
     # For file destinations, return schema as-is (no translation needed)
-    if destination_type == "file":
+    if destination_type in ["csv", "json"]:
         return cast(TargetDatabaseSchema, schema)
 
     translator = DatabaseTypeTranslator()
@@ -112,16 +112,16 @@ def load_data(
                 raise ValueError("MySQL destination requires DatabaseConfig")
             connector = MySQLConnector()
             connector.connect(cast(DatabaseConfig, destination_config))
-        elif destination_type == "file":
+        elif destination_type in ["csv", "json"]:
             # For file connectors, use the dataset_config which contains file-specific info
             if not isinstance(dataset_config, FileItemConfig):
                 raise ValueError("File destination requires FileItemConfig")
-            if dataset_config.format == "csv":
+            if destination_type == "csv":
                 connector = CSVConnector(dataset_config)
-            elif dataset_config.format == "json":
+            elif destination_type == "json":
                 connector = JSONConnector(dataset_config)
             else:
-                raise ValueError(f"Unsupported file format: {dataset_config.format}")
+                raise ValueError(f"Unsupported file format: {destination_type}")
         else:
             logger.error(f"Unsupported destination type: {destination_type}")
             raise ValueError(f"Unsupported destination type: {destination_type}")

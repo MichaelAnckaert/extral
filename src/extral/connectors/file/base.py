@@ -74,9 +74,7 @@ class FileConnector(Connector):
         Returns:
             The resolved file path or URL
         """
-        if dataset_name:
-            return dataset_name
-        elif self.config.file_path:
+        if self.config.file_path:
             return self.config.file_path
         elif self.config.http_path:
             return self.config.http_path

@@ -21,3 +21,5 @@ config*.yaml
 
 # Sphinx documentation
 docs/_build/
+
+logs/*

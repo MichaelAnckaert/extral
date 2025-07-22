@@ -187,8 +187,8 @@ class PipelineValidator:
             ValidationResult with connectivity test results
         """
         try:
-            warnings = []
-            details = {}
+            warnings: List[str] = []
+            details: Dict[str, Any] = {}
             
             # Test source connectivity
             source_connector = self._create_connector(pipeline.source)
@@ -241,8 +241,8 @@ class PipelineValidator:
             ValidationResult with resource validation results
         """
         try:
-            warnings = []
-            details = {}
+            warnings: List[str] = []
+            details: Dict[str, Any] = {}
             
             # Validate source resources
             if isinstance(pipeline.source, DatabaseConfig):
@@ -312,8 +312,8 @@ class PipelineValidator:
             ValidationResult with configuration validation results
         """
         try:
-            warnings = []
-            details = {}
+            warnings: List[str] = []
+            details: Dict[str, Any] = {}
             
             # Validate worker count
             if pipeline.workers is not None and pipeline.workers <= 0:
@@ -373,8 +373,8 @@ class PipelineValidator:
             ValidationResult indicating if there are global conflicts
         """
         try:
-            warnings = []
-            details = {}
+            warnings: List[str] = []
+            details: Dict[str, Any] = {}
             
             # Track database resources (host:port:database:schema:table)
             db_resources: Dict[str, List[str]] = {}
@@ -466,13 +466,13 @@ class PipelineValidator:
         """
         if isinstance(config, DatabaseConfig):
             if config.type.lower() == "mysql":
-                connector = MySQLConnector()
-                connector.connect(config)
-                return connector
+                mysql_connector = MySQLConnector()
+                mysql_connector.connect(config)
+                return mysql_connector
             elif config.type.lower() == "postgresql":
-                connector = PostgreSQLConnector()
-                connector.connect(config)
-                return connector
+                pg_connector = PostgreSQLConnector()
+                pg_connector.connect(config)
+                return pg_connector
             else:
                 raise ValidationException(
                     f"Unsupported database type for connectivity testing: {config.type}",

@@ -76,3 +76,20 @@ class Connector(ABC):
             - MERGE: Update existing records and insert new ones based on merge key
         """
         pass
+
+    @abstractmethod
+    def test_connection(self) -> bool:
+        """
+        Test connectivity to the data source/destination.
+        
+        This method should verify that the connector can successfully connect
+        to its configured data source or destination without performing any
+        actual data operations.
+        
+        Returns:
+            bool: True if connection is successful, False otherwise
+            
+        Raises:
+            ConnectionException: If connection fails with details about the failure
+        """
+        pass

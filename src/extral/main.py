@@ -19,11 +19,12 @@ from pathlib import Path
 from typing import Optional
 
 from extral import __version__
-from extral.config import Config, ConnectorConfig, TableConfig, FileItemConfig
+from extral.config import Config, ConnectorConfig, TableConfig, FileItemConfig, DatabaseConfig
 from extral.extract import extract_table
 from extral.load import load_data
 from extral.state import state
 from extral.error_tracking import ErrorTracker
+from extral.validation import PipelineValidator, format_validation_report
 
 import argparse
 
@@ -150,6 +151,16 @@ def main():
         nargs="+",
         help="Skip specified datasets during processing.",
     )
+    parser.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="Only validate the configuration without executing pipelines.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Perform validation and show execution plan without running pipelines.",
+    )
 
     args = parser.parse_args()
 
@@ -158,19 +169,66 @@ def main():
     logger.debug(f"Parsed arguments: {args} ")
 
     config_file_path = args.config
-    run(config_file_path, args.continue_on_error, args.skip_datasets or [])
+    run(
+        config_file_path, 
+        args.continue_on_error, 
+        args.skip_datasets or [], 
+        args.validate_only, 
+        args.dry_run
+    )
 
 
 def run(
     config_file_path: str,
     continue_on_error: bool = False,
     skip_datasets: Optional[list[str]] = None,
+    validate_only: bool = False,
+    dry_run: bool = False,
 ):
     if skip_datasets is None:
         skip_datasets = []
 
     state.load_state()
     config = Config.read_config(config_file_path)
+    
+    # Perform pre-flight validation
+    logger.info("Performing pre-flight validation...")
+    validator = PipelineValidator()
+    validation_report = validator.validate_configuration(config)
+    
+    # Print validation report
+    print(format_validation_report(validation_report))
+    
+    # Handle validation-only mode
+    if validate_only:
+        logger.info("Validation complete. Exiting (--validate-only mode).")
+        sys.exit(0 if validation_report.overall_valid else 1)
+    
+    # Check if validation failed
+    if not validation_report.overall_valid:
+        logger.error("Configuration validation failed. Cannot proceed with execution.")
+        logger.error("Use --validate-only for detailed validation report.")
+        sys.exit(1)
+    
+    # Handle dry-run mode
+    if dry_run:
+        logger.info("=== DRY RUN MODE ===")
+        logger.info("Validation passed. Execution plan:")
+        for pipeline in config.pipelines:
+            logger.info(f"Pipeline: {pipeline.name}")
+            if isinstance(pipeline.source, DatabaseConfig):
+                logger.info(f"  Source: {pipeline.source.type} ({len(pipeline.source.tables)} tables)")
+                for table in pipeline.source.tables:
+                    logger.info(f"    - Table: {table.name} (strategy: {table.strategy.value})")
+            else:  # FileConfig
+                logger.info(f"  Source: {pipeline.source.type} ({len(pipeline.source.files)} files)")
+                for file_item in pipeline.source.files:
+                    file_name = file_item.file_path or file_item.http_path or "unknown"
+                    logger.info(f"    - File: {file_name} (strategy: {file_item.strategy.value})")
+            logger.info(f"  Destination: {pipeline.destination.type}")
+            logger.info(f"  Workers: {pipeline.workers or DEFAULT_WORKER_COUNT}")
+        logger.info("Dry run complete. Exiting (--dry-run mode).")
+        sys.exit(0)
 
     if not config.pipelines:
         logger.error("No pipelines specified in the configuration.")

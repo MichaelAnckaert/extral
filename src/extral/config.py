@@ -154,7 +154,7 @@ class FileItemConfig:
 
         return cls(
             name=data["name"],
-            format=data["format"],
+            format=data.get("format", "csv"),  # Default to CSV if not specified
             file_path=data.get("file_path"),
             http_path=data.get("http_path"),
             options=data.get("options", {}),
@@ -268,7 +268,8 @@ class PipelineConfig:
         # Parse source config
         source_data = data.get("source", {})
         source_config: ConnectorConfig
-        if source_data.get("type") == "file":
+        source_type = source_data.get("type", "")
+        if source_type in ["file", "csv", "json"]:
             source_config = FileConfig.from_dict(source_data)
         else:
             source_config = DatabaseConfig.from_dict(source_data)
@@ -276,7 +277,8 @@ class PipelineConfig:
         # Parse destination config
         destination_data = data.get("destination", {})
         destination_config: ConnectorConfig
-        if destination_data.get("type") == "file":
+        destination_type = destination_data.get("type", "")
+        if destination_type in ["file", "csv", "json"]:
             destination_config = FileConfig.from_dict(destination_data)
         else:
             destination_config = DatabaseConfig.from_dict(destination_data)
@@ -296,6 +298,10 @@ class Config:
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     processing: ProcessingConfig = field(default_factory=ProcessingConfig)
     pipelines: list[PipelineConfig] = field(default_factory=list)
+
+    def __post_init__(self):
+        """Validate configuration after initialization."""
+        self._validate_pipelines(self.pipelines)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Config":

@@ -27,6 +27,7 @@ from psycopg2 import sql
 from extral.connectors.database.generic import DatabaseConnector
 from extral.config import DatabaseConfig, ExtractConfig, LoadConfig, ReplaceMethod
 from extral.database import DatabaseRecord
+from extral.exceptions import ConnectionException
 from extral.schema import TargetDatabaseSchema
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,68 @@ class PostgreSQLConnector(DatabaseConnector):
             self.cursor.close()
         if self.connection:
             self.connection.close()
+
+    def test_connection(self) -> bool:
+        """Test connectivity to the PostgreSQL database.
+        
+        Returns:
+            bool: True if connection is successful, False otherwise
+            
+        Raises:
+            ConnectionException: If connection fails with details about the failure
+        """
+        if not self.config:
+            raise ConnectionException(
+                "Cannot test connection: No database configuration provided",
+                operation="test_connection"
+            )
+        
+        try:
+            # Attempt to create a test connection
+            test_connection = psycopg2.connect(
+                dbname=self.config.database,
+                user=self.config.user,
+                password=self.config.password,
+                host=self.config.host,
+                port=self.config.port,
+                connect_timeout=10,  # 10 second timeout for testing
+            )
+            
+            # Test that we can execute a simple query
+            with test_connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+                cursor.fetchone()
+            
+            test_connection.close()
+            logger.info(f"PostgreSQL connection test successful: {self.config.host}:{self.config.port}/{self.config.database}")
+            return True
+            
+        except psycopg2.Error as e:
+            error_msg = f"PostgreSQL connection test failed: {str(e)}"
+            logger.error(error_msg)
+            raise ConnectionException(
+                error_msg,
+                operation="test_connection",
+                details={
+                    "host": self.config.host,
+                    "port": self.config.port,
+                    "database": self.config.database,
+                    "user": self.config.user,
+                    "schema": getattr(self.config, 'schema', None)
+                }
+            ) from e
+        except Exception as e:
+            error_msg = f"Unexpected error during PostgreSQL connection test: {str(e)}"
+            logger.error(error_msg)
+            raise ConnectionException(
+                error_msg,
+                operation="test_connection",
+                details={
+                    "host": self.config.host,
+                    "port": self.config.port,
+                    "database": self.config.database
+                }
+            ) from e
 
     def is_table_exists(self, table_name: str) -> bool:
         """Check if a table exists in the database."""

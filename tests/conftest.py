@@ -386,3 +386,13 @@ def sample_database_records():
         {"id": 2, "name": "Jane Smith", "email": "jane@example.com", "age": 25}, 
         {"id": 3, "name": "Bob Johnson", "email": "bob@example.com", "age": 35}
     ]
+
+
+def pytest_addoption(parser):
+    """Add command line option for integration tests."""
+    parser.addoption(
+        "--run-integration",
+        action="store_true",
+        default=False,
+        help="Run integration tests that require real database connections"
+    )

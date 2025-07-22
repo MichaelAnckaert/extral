@@ -517,17 +517,22 @@ class TestMultiPipelineConfigurations:
         assert not report.global_conflicts.is_valid
         assert "Resource conflicts detected" in str(report.global_conflicts.error_message)
 
-    @patch('extral.connectors.database.mysql.MySQLConnector.test_connection')
-    @patch('extral.connectors.database.postgresql.PostgreSQLConnector.test_connection') 
+    @patch('extral.validation.MySQLConnector')
+    @patch('extral.validation.PostgreSQLConnector') 
     @patch('extral.main.extract_table')
     @patch('extral.main.load_data')
     def test_multi_pipeline_dry_run(
-        self, mock_load_data, mock_extract_table, mock_pg_test, mock_mysql_test
+        self, mock_load_data, mock_extract_table, mock_pg_connector, mock_mysql_connector
     ):
         """Test dry run mode with multi-pipeline configuration."""
-        # Setup mocks
-        mock_mysql_test.return_value = True
-        mock_pg_test.return_value = True
+        # Setup connector instance mocks
+        mock_mysql_instance = Mock()
+        mock_mysql_instance.test_connection.return_value = True
+        mock_mysql_connector.return_value = mock_mysql_instance
+        
+        mock_pg_instance = Mock()
+        mock_pg_instance.test_connection.return_value = True
+        mock_pg_connector.return_value = mock_pg_instance
         
         config_data = {
             "pipelines": [

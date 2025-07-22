@@ -13,11 +13,13 @@
 # limitations under the License.
 import json
 import logging
+from typing import Optional
 
 from extral.config import TableConfig, FileItemConfig, LoadConfig, LoadStrategy, ReplaceMethod, ConnectorConfig
 from extral.connectors import PostgreSQLConnector, MySQLConnector
 from extral.connectors.file import CSVConnector, JSONConnector
 from extral.database import DatabaseTypeTranslator
+from extral.exceptions import LoadException, ConnectionException
 from extral.schema import DatabaseSchema, TargetDatabaseSchema
 
 logger = logging.getLogger(__name__)
@@ -58,6 +60,7 @@ def load_data(
     dataset_config: TableConfig | FileItemConfig,
     file_path: str,
     schema_path: str,
+    pipeline_name: Optional[str] = None,
 ):
     dataset_name = dataset_config.name
 
@@ -70,33 +73,52 @@ def load_data(
             f"Loading data for dataset '{dataset_name}' from file '{file_path}' to destination file"
         )
 
-    with open(schema_path, "r") as schema_file:
-        schema = json.load(schema_file)
-        target_schema = _create_target_database_schema(destination_config, schema)
+    try:
+        with open(schema_path, "r") as schema_file:
+            schema = json.load(schema_file)
+            target_schema = _create_target_database_schema(destination_config, schema)
+    except Exception as e:
+        raise LoadException(
+            f"Failed to read or process schema file: {str(e)}",
+            pipeline=pipeline_name,
+            dataset=dataset_name,
+            operation="schema_loading"
+        ) from e
 
     # TODO: if incremental, verify database schema and recreate + full load if different!
 
     destination_type = destination_config.type
     
     # Get the appropriate connector
-    if destination_type == "postgresql":
-        connector = PostgreSQLConnector()
-        connector.connect(destination_config)
-    elif destination_type == "mysql":
-        connector = MySQLConnector()
-        connector.connect(destination_config)
-    elif destination_type == "file":
-        # For file connectors
-        file_config = destination_config  # type: ignore
-        if file_config.format == "csv":
-            connector = CSVConnector(file_config)
-        elif file_config.format == "json":
-            connector = JSONConnector(file_config)
+    try:
+        if destination_type == "postgresql":
+            connector = PostgreSQLConnector()
+            connector.connect(destination_config)
+        elif destination_type == "mysql":
+            connector = MySQLConnector()
+            connector.connect(destination_config)
+        elif destination_type == "file":
+            # For file connectors
+            file_config = destination_config  # type: ignore
+            if file_config.format == "csv":
+                connector = CSVConnector(file_config)
+            elif file_config.format == "json":
+                connector = JSONConnector(file_config)
+            else:
+                raise ValueError(f"Unsupported file format: {file_config.format}")
         else:
-            raise ValueError(f"Unsupported file format: {file_config.format}")
-    else:
-        logger.error(f"Unsupported destination type: {destination_type}")
-        raise ValueError(f"Unsupported destination type: {destination_type}")
+            logger.error(f"Unsupported destination type: {destination_type}")
+            raise ValueError(f"Unsupported destination type: {destination_type}")
+    except ConnectionException:
+        # Re-raise connection exceptions with enhanced context
+        raise
+    except Exception as e:
+        raise LoadException(
+            f"Failed to establish connection to destination: {str(e)}",
+            pipeline=pipeline_name,
+            dataset=dataset_name,
+            operation="connection"
+        ) from e
     
     try:
         # Create LoadConfig from dataset_config
@@ -119,17 +141,39 @@ def load_data(
                 logger.error(
                     f"Unsupported replace method '{load_config.replace_method.value}' for dataset '{dataset_name}'"
                 )
-                raise ValueError(f"Unsupported replace method: {load_config.replace_method.value}")
+                raise LoadException(
+                    f"Unsupported replace method: {load_config.replace_method.value}",
+                    pipeline=pipeline_name,
+                    dataset=dataset_name,
+                    operation="table_preparation"
+                )
         
         # Read data from file
-        with open(file_path, "rb") as file:
-            import extral.store as store
-            data_bytes = store.decompress_data(file.read())
-            data_str = data_bytes.decode("utf-8")
-            data = json.loads(data_str)
+        try:
+            with open(file_path, "rb") as file:
+                import extral.store as store
+                data_bytes = store.decompress_data(file.read())
+                data_str = data_bytes.decode("utf-8")
+                data = json.loads(data_str)
+        except Exception as e:
+            raise LoadException(
+                f"Failed to read or decompress data file: {str(e)}",
+                pipeline=pipeline_name,
+                dataset=dataset_name,
+                operation="data_reading"
+            ) from e
         
         # Use the new load_data method
-        connector.load_data(dataset_name, data, load_config)
+        try:
+            connector.load_data(dataset_name, data, load_config)
+        except Exception as e:
+            raise LoadException(
+                f"Failed to load data to destination: {str(e)}",
+                pipeline=pipeline_name,
+                dataset=dataset_name,
+                operation="data_loading",
+                details={"records_count": len(data)}
+            ) from e
         
     finally:
         # Only disconnect database connectors

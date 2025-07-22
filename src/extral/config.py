@@ -163,24 +163,10 @@ class FileConfig:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "FileConfig":
         """Create FileConfig from dictionary."""
-        # Handle both single file and multiple files
-        files = []
-        if "files" in data:
-            # New format with multiple files
-            files = [FileItemConfig.from_dict(file_data) for file_data in data["files"]]
-        elif "format" in data:
-            # Legacy single file format - convert to FileItemConfig
-            file_item = FileItemConfig.from_dict({
-                "name": data.get("name", "file"),
-                "format": data["format"],
-                "file_path": data.get("file_path"),
-                "http_path": data.get("http_path"),
-                "options": data.get("options", {}),
-                "strategy": data.get("strategy", "replace"),
-                "merge_key": data.get("merge_key"),
-                "batch_size": data.get("batch_size")
-            })
-            files = [file_item]
+        if "files" not in data:
+            raise ValueError("'files' configuration is required for file sources")
+        
+        files = [FileItemConfig.from_dict(file_data) for file_data in data["files"]]
         
         return cls(
             type=data["type"],
@@ -300,52 +286,18 @@ class Config:
     def from_dict(cls, data: Dict[str, Any]) -> "Config":
         """Create Config from dictionary."""
         # Parse logging config
-        logging_data = data.get("logging", [{}])
-        if isinstance(logging_data, list):
-            logging_data = logging_data[0] if logging_data else {}
+        logging_data = data.get("logging", {})
         logging_config = LoggingConfig.from_dict(logging_data)
         
         # Parse processing config
-        processing_data = data.get("processing", [{}])
-        if isinstance(processing_data, list):
-            processing_data = processing_data[0] if processing_data else {}
+        processing_data = data.get("processing", {})
         processing_config = ProcessingConfig.from_dict(processing_data)
         
         # Parse pipelines
-        pipelines = []
-        if "pipelines" in data:
-            # New multi-pipeline format
-            pipelines = [PipelineConfig.from_dict(pipeline_data) for pipeline_data in data["pipelines"]]
-        else:
-            # Legacy single-pipeline format - convert to pipeline
-            if "source" not in data or "destination" not in data:
-                raise ValueError("Either 'pipelines' or both 'source' and 'destination' must be provided")
-            
-            # Get source and destination data
-            source_data = data.get("source", [])
-            if isinstance(source_data, list):
-                if not source_data:
-                    raise ValueError("Source configuration is required")
-                source_data = source_data[0]
-            
-            destination_data = data.get("destination", [])
-            if isinstance(destination_data, list):
-                if not destination_data:
-                    raise ValueError("Destination configuration is required")
-                destination_data = destination_data[0]
-            
-            # Add tables to source config for backward compatibility
-            if "tables" in data:
-                source_data["tables"] = data["tables"]
-            
-            # Create single pipeline from legacy config
-            pipeline_data = {
-                "name": "default",
-                "source": source_data,
-                "destination": destination_data,
-                "workers": processing_config.workers
-            }
-            pipelines = [PipelineConfig.from_dict(pipeline_data)]
+        if "pipelines" not in data:
+            raise ValueError("'pipelines' configuration is required")
+        
+        pipelines = [PipelineConfig.from_dict(pipeline_data) for pipeline_data in data["pipelines"]]
         
         # Validate pipelines
         cls._validate_pipelines(pipelines)

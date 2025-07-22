@@ -13,11 +13,19 @@
 # limitations under the License.
 import json
 import logging
-from typing import Generator, Optional, Tuple
+from typing import Generator, Optional, Tuple, cast
 
 from extral import encoder
-from extral.config import ExtractConfig, TableConfig, FileItemConfig, ConnectorConfig
-from extral.connectors import MySQLConnector, PostgreSQLConnector
+from extral.config import (
+    ExtractConfig,
+    TableConfig,
+    FileItemConfig,
+    FileConfig,
+    DatabaseConfig,
+    ConnectorConfig,
+)
+from extral.connectors.connector import Connector
+from extral.connectors.database import MySQLConnector, PostgreSQLConnector
 from extral.connectors.file import CSVConnector, JSONConnector
 from extral.database import DatabaseRecord
 from extral.exceptions import ExtractException, ConnectionException
@@ -39,8 +47,10 @@ def extract_schema_from_source(
     source_type = source_config.type
 
     if source_type == "mysql":
+        if not hasattr(source_config, "host"):
+            raise ValueError("MySQL source requires DatabaseConfig")
         mysql_connector = MySQLConnector()
-        mysql_connector.connect(source_config)
+        mysql_connector.connect(cast(DatabaseConfig, source_config))
         schema = mysql_connector.extract_schema_for_table(table_name)
         mysql_connector.disconnect()
         if not schema:
@@ -48,8 +58,10 @@ def extract_schema_from_source(
                 f"Could not extract schema for table '{table_name}' from MySQL source"
             )
     elif source_type == "postgresql":
+        if not hasattr(source_config, "host"):
+            raise ValueError("PostgreSQL source requires DatabaseConfig")
         postgresql_connector = PostgreSQLConnector()
-        postgresql_connector.connect(source_config)
+        postgresql_connector.connect(cast(DatabaseConfig, source_config))
         schema = postgresql_connector.extract_schema_for_table(table_name)
         postgresql_connector.disconnect()
         if not schema:
@@ -57,29 +69,48 @@ def extract_schema_from_source(
                 f"Could not extract schema for table '{table_name}' from PostgreSQL source"
             )
     elif source_type == "file":
-        # For file connectors, we need to use the infer_schema method
-        file_config = source_config  # type: ignore
-        if file_config.format == "csv":
-            connector = CSVConnector(file_config)
-        elif file_config.format == "json":
-            connector = JSONConnector(file_config)
+        # For file connectors, find the specific file configuration
+        if not hasattr(source_config, "files"):
+            raise ValueError("File source config must have files attribute")
+
+        file_config = cast(FileConfig, source_config)
+
+        # Find the file item config that matches the table_name
+        file_item_config = None
+        for file_item in file_config.files:
+            if file_item.name == table_name:
+                file_item_config = file_item
+                break
+
+        if not file_item_config:
+            raise ValueError(f"No file configuration found for dataset '{table_name}'")
+
+        # Create connector based on file format
+        connector: Connector
+        if file_item_config.format == "csv":
+            connector = CSVConnector(file_item_config)
+        elif file_item_config.format == "json":
+            connector = JSONConnector(file_item_config)
         else:
-            raise ValueError(f"Unsupported file format: {file_config.format}")
-        
+            raise ValueError(f"Unsupported file format: {file_item_config.format}")
+
         # Infer schema from file
         schema_dict = connector.infer_schema(table_name)
-        
+
         # Convert to TargetDatabaseSchema format
         inferred_schema: TargetDatabaseSchema = {
-            "schema_source": f"file_{file_config.format}",
-            "schema": schema_dict
+            "schema_source": f"file_{file_item_config.format}",
+            "schema": schema_dict,
         }
         return inferred_schema
     else:
         logger.error(f"Unsupported source type: {source_type}")
         raise ValueError(f"Unsupported source type: {source_type}")
 
-    db_inferred_schema: TargetDatabaseSchema = {"schema_source": source_type, "schema": {}}
+    db_inferred_schema: TargetDatabaseSchema = {
+        "schema_source": source_type,
+        "schema": {},
+    }
     for column in schema:
         column_name = column["Field"]
         column_type = column["type"]  # Changed from "Type" to match new connector
@@ -100,24 +131,30 @@ def _extract_data(
     source_type = source_config.type
     dataset_name = dataset_config.name
 
+    connector: Connector
     if source_type == "mysql":
+        if not hasattr(source_config, "host"):
+            raise ValueError("MySQL source requires DatabaseConfig")
         connector = MySQLConnector()
-        connector.connect(source_config)
+        connector.connect(cast(DatabaseConfig, source_config))
         return connector.extract_data(dataset_name, extract_config)
     elif source_type == "postgresql":
+        if not hasattr(source_config, "host"):
+            raise ValueError("PostgreSQL source requires DatabaseConfig")
         connector = PostgreSQLConnector()
-        connector.connect(source_config)
+        connector.connect(cast(DatabaseConfig, source_config))
         return connector.extract_data(dataset_name, extract_config)
     elif source_type == "file":
-        # For file connectors
-        file_config = source_config  # type: ignore
-        if file_config.format == "csv":
-            connector = CSVConnector(file_config)
-        elif file_config.format == "json":
-            connector = JSONConnector(file_config)
+        # For file connectors, use the dataset_config which contains file-specific info
+        if not isinstance(dataset_config, FileItemConfig):
+            raise ValueError("File source requires FileItemConfig")
+        if dataset_config.format == "csv":
+            connector = CSVConnector(dataset_config)
+        elif dataset_config.format == "json":
+            connector = JSONConnector(dataset_config)
         else:
-            raise ValueError(f"Unsupported file format: {file_config.format}")
-        
+            raise ValueError(f"Unsupported file format: {dataset_config.format}")
+
         return connector.extract_data(dataset_name, extract_config)
     else:
         logger.error(f"Unsupported source type: {source_type}")
@@ -153,23 +190,24 @@ def _infer_schema_from_data(
 
 
 def extract_table(
-    source_config: ConnectorConfig, dataset_config: TableConfig | FileItemConfig, pipeline_name: str
+    source_config: ConnectorConfig,
+    dataset_config: TableConfig | FileItemConfig,
+    pipeline_name: str,
 ) -> Tuple[Optional[str], Optional[str]]:
     dataset_name = dataset_config.name
-    incremental = getattr(dataset_config, 'incremental', None)
-    
+    incremental = getattr(dataset_config, "incremental", None)
+
     # Use dataset_id to identify the table (for now, just use dataset_name)
     dataset_id = dataset_name
 
     try:
         logger.info("Starting extraction from dataset: %s", dataset_name)
-        
+
         # Set up extraction config
         extract_config = ExtractConfig(
-            extract_type="FULL",
-            batch_size=getattr(dataset_config, 'batch_size', None)
+            extract_type="FULL", batch_size=getattr(dataset_config, "batch_size", None)
         )
-        
+
         # Handle incremental extraction with state management
         if incremental:
             logger.debug(
@@ -192,7 +230,7 @@ def extract_table(
 
             # Check existing state for this dataset in this pipeline
             existing_state = state.get_dataset_state(pipeline_name, dataset_id)
-            
+
             if existing_state:
                 state_incremental = existing_state.get("incremental", {})
                 if state_incremental:
@@ -226,7 +264,7 @@ def extract_table(
                     extract_config.last_value = last_value
                 extract_config.extract_type = "INCREMENTAL"
                 extract_config.incremental_field = incremental_field
-        
+
         datagen = _extract_data(source_config, dataset_config, extract_config)
 
         full_data: list[DatabaseRecord] = []
@@ -260,9 +298,7 @@ def extract_table(
                 }
             }
             state.set_dataset_state(pipeline_name, dataset_id, dataset_state)
-            logger.debug(
-                f"Updated state for incremental extraction: {dataset_state}"
-            )
+            logger.debug(f"Updated state for incremental extraction: {dataset_state}")
 
         schema = extract_schema_from_source(source_config, dataset_name)
         if not schema:
@@ -293,7 +329,7 @@ def extract_table(
             f"Failed to extract or create schema: {str(e)}",
             pipeline=pipeline_name,
             dataset=dataset_name,
-            operation="schema_extraction"
+            operation="schema_extraction",
         ) from e
     except Exception as e:
         logger.error("Error processing dataset '%s': %s", dataset_name, e)
@@ -302,5 +338,5 @@ def extract_table(
             f"Extraction failed: {str(e)}",
             pipeline=pipeline_name,
             dataset=dataset_name,
-            operation="extract"
+            operation="extract",
         ) from e

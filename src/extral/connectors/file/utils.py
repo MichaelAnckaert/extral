@@ -12,20 +12,22 @@ logger = logging.getLogger(__name__)
 
 
 @contextmanager
-def get_file_handle(path: str, mode: str = "r") -> Generator[Union[Path, tempfile._TemporaryFileWrapper], None, None]:
+def get_file_handle(
+    path: str, mode: str = "r"
+) -> Generator[Union[Path, tempfile._TemporaryFileWrapper], None, None]:
     """
     Get a file handle for either local file or HTTP/HTTPS URL.
-    
+
     For HTTP/HTTPS URLs, downloads the file to a temporary location.
     For local files, returns the path directly.
-    
+
     Args:
         path: Local file path or HTTP/HTTPS URL
         mode: File open mode (only used for local files)
-        
+
     Yields:
         Path object for local files or temporary file for URLs
-        
+
     Raises:
         HTTPError: If HTTP download fails
         URLError: If URL is invalid or network error
@@ -46,19 +48,23 @@ def get_file_handle(path: str, mode: str = "r") -> Generator[Union[Path, tempfil
                         tmp_file.write(chunk)
                         total_size += len(chunk)
                         if total_size % (chunk_size * 1000) == 0:
-                            logger.debug(f"Downloaded {total_size / 1024 / 1024:.1f} MB")
-                
+                            logger.debug(
+                                f"Downloaded {total_size / 1024 / 1024:.1f} MB"
+                            )
+
                 tmp_file.flush()
                 tmp_path = Path(tmp_file.name)
-                logger.info(f"Downloaded {total_size / 1024 / 1024:.1f} MB to {tmp_path}")
-            
+                logger.info(
+                    f"Downloaded {total_size / 1024 / 1024:.1f} MB to {tmp_path}"
+                )
+
             try:
                 yield tmp_path
             finally:
                 # Clean up temporary file
                 tmp_path.unlink()
                 logger.debug(f"Cleaned up temporary file {tmp_path}")
-                
+
         except HTTPError as e:
             logger.error(f"HTTP error downloading {path}: {e}")
             raise
@@ -76,10 +82,10 @@ def get_file_handle(path: str, mode: str = "r") -> Generator[Union[Path, tempfil
 def estimate_file_size(path: str) -> Optional[int]:
     """
     Estimate the size of a file from local path or HTTP headers.
-    
+
     Args:
         path: Local file path or HTTP/HTTPS URL
-        
+
     Returns:
         File size in bytes, or None if cannot be determined
     """

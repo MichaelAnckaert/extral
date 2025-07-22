@@ -26,15 +26,15 @@ from extral.database import DatabaseRecord
 class Connector(ABC):
     """
     Abstract base class for all data connectors.
-    
+
     This interface defines the core ETL operations that all connectors must implement:
     - extract_data: Extract data from any source (database, files, APIs, etc.)
     - load_data: Load data into any destination with configurable strategies
-    
+
     The interface is designed to be generic and not assume any specific storage type,
     allowing for databases, files, APIs, or any other data sources/destinations.
     """
-    
+
     @abstractmethod
     def extract_data(
         self,
@@ -43,17 +43,17 @@ class Connector(ABC):
     ) -> Generator[list[DatabaseRecord], None, None]:
         """
         Extract data from the source dataset.
-        
+
         Args:
             dataset_name: Name/identifier of the dataset to extract from
                          (could be table name, file path, API endpoint, etc.)
             extract_config: Configuration for extraction (incremental, batch size, etc.)
-            
+
         Yields:
             Batches of database records as dictionaries
         """
         pass
-    
+
     @abstractmethod
     def load_data(
         self,
@@ -63,13 +63,13 @@ class Connector(ABC):
     ) -> None:
         """
         Load data into the destination dataset using the specified strategy.
-        
+
         Args:
             dataset_name: Name/identifier of the target dataset
                          (could be table name, file path, API endpoint, etc.)
             data: List of records to load
             load_config: Configuration specifying the load strategy
-            
+
         Strategies:
             - APPEND: Add new records without modifying existing data
             - REPLACE: Replace all data (with truncate or recreate method)
